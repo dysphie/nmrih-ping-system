@@ -11,8 +11,13 @@ The ping can be used to communicate locations, objectives, enemies, items, or an
 - Option to allow dead players to ping
 
 ## Installation
+- Grab the latest ZIP from releases
+- Extract the contents into `addons/sourcemod`
+- Relaod your translations: `sm_reload_translations` in server console
+- Load the plugin: `sm plugins load ping`
 
-
+## Optional requirements
+- The Client Preferences extension to allow players to hide pings via `sm_settings`
 
 ## Configuration
 
