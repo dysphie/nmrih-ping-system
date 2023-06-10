@@ -3,6 +3,8 @@
 This plugin allows players to point at the world and create a visual and audible ping that can be seen and heard by other players. 
 The ping can be used to communicate locations, objectives, enemies, items, or anything else in the game world.
 
+![image](https://github.com/dysphie/nmrih-ping-system/assets/11559683/d44a09e7-30cf-40f7-902a-aef0c336a607)
+
 ## Features
 
 - Customizable ping icon, color, sound, lifetime, and size
@@ -45,8 +47,9 @@ You can configure the plugin by editing the following console variables in `cfg/
 
 ## Usage
 
-a) Open the voice menu (Default: 3) and press the Use key (Default: E)
-a) Bind a key to the `sm_ping` command. For example:
+A.   Open the voice menu (Default: 3) and press the Use key (Default: E)
+
+B.   Bind a key to the `sm_ping` command. For example:
 
 ```
 bind mouse3 sm_ping
