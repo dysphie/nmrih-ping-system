@@ -66,7 +66,7 @@ public void OnPluginStart()
 
 	SetCookieMenuItem(CustomCookieMenu, 0, "Player Pings");
 
-	LoadTranslations("ping.phrases");
+	LoadTranslations("player-pings.phrases");
 
 	cvEnabled		  = CreateConVar("sm_ping_enabled", "1", "Whether player pings are enabled");
 	cvTokensPerSecond = CreateConVar("sm_ping_cooldown_tokens_per_second", "0.05", "Tokens added to the bucket per second");
@@ -95,7 +95,7 @@ public void OnPluginStart()
 
 	cvSound.AddChangeHook(OnPingSoundConVarChanged);
 
-	AutoExecConfig(true, "ping");
+	AutoExecConfig(true, "player-pings");
 	RegConsoleCmd("sm_ping", Cmd_Ping, "Place a marker on the location you are pointing at");
 }
 
