@@ -45,7 +45,8 @@ You can configure the plugin by editing the following console variables in `cfg/
 
 ## Usage
 
-To use the plugin, bind a key to the `sm_ping` command. For example:
+a) Open the voice menu (Default: 3) and press the Use key (Default: E)
+a) Bind a key to the `sm_ping` command. For example:
 
 ```
 bind mouse3 sm_ping
