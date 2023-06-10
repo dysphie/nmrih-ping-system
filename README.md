@@ -16,14 +16,14 @@ The ping can be used to communicate locations, objectives, enemies, items, or an
 - Grab the latest ZIP from releases
 - Extract the contents into `addons/sourcemod`
 - Relaod your translations: `sm_reload_translations` in server console
-- Load the plugin: `sm plugins load ping`
+- Load the plugin: `sm plugins load player-pings`
 
 ## Optional requirements
 - The Client Preferences extension to allow players to hide pings via `sm_settings`
 
 ## Configuration
 
-You can configure the plugin by editing the following console variables in `cfg/sourcemod/ping.cfg`:
+You can configure the plugin by editing the following console variables in `cfg/sourcemod/player-pings.cfg`:
 
 | Variable | Description | Default |
 | --- | --- | --- |
