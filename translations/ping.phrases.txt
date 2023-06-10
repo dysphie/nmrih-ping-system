@@ -1,0 +1,27 @@
+"Phrases"
+{
+	"Player Ping"
+	{
+		"#format"	"{1:N}"
+		"en"	"{1} points"
+		"es"	"{1} señala"
+	}
+
+	"Must Be Alive"
+	{
+		"en"	"Only alive players can ping"
+		"es"	"Solo las personas vivas pueden señalar"
+	}
+
+	"Ping Disabled"
+	{
+		"en"	"Player pings are disabled"
+		"es"	"Señalar está desactivado"
+	}
+
+	"On Cooldown"
+	{
+		"en"	"You are doing this too often"
+		"es"	"Estás haciendo esto con demasiada frecuencia"
+	}
+}
