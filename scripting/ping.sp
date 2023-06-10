@@ -1,5 +1,6 @@
 #include <sourcemod>
 #include <sdktools>
+#include <morecolors>
 
 #undef REQUIRE_PLUGIN
 #include <clientprefs>
@@ -178,13 +179,13 @@ Action Cmd_Ping(int client, int args)
 
 	if (!cvEnabled.BoolValue)
 	{
-		ReplyToCommand(client, "%t", "Ping Disabled");
+		CReplyToCommand(client, "%t", "Ping Disabled");
 		return Plugin_Handled;
 	}
 
 	if (!IsPlayerAlive(client) && !cvAllowDead.BoolValue)
 	{
-		ReplyToCommand(client, "%t", "Must Be Alive");
+		CReplyToCommand(client, "%t", "Must Be Alive");
 		return Plugin_Handled;
 	}
 
@@ -207,7 +208,7 @@ void DoPing(int client, int duration)
 {
 	if (!CanUsePing(client))
 	{
-		ReplyToCommand(client, "%t", "On Cooldown");
+		CPrintToChat(client, "%t", "On Cooldown");
 		return;
 	}
 
@@ -281,7 +282,6 @@ bool CouldEntityGlow(int entity)
 
 void PingWorld(float pos[3], float normal[3], int client, int duration)
 {
-	PrintToServer("PingWorld");
 	// Create something for our instructor to latch onto
 	int entity = CreateEntityByName("info_target_instructor_hint");
 	TeleportEntity(entity, pos);
@@ -329,8 +329,6 @@ Action Frame_PointAtEntity(Handle timer, DataPack data)
 	data.ReadFloatArray(pingPos, sizeof(pingPos));
 
 	PointAtEntity(entity, player, duration);
-
-	PrintToServer("Frame_PointAtEntity");
 	return Plugin_Stop;
 }
 
