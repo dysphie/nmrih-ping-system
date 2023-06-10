@@ -54,3 +54,10 @@ B.   Bind a key to the `sm_ping` command. For example:
 ```
 bind mouse3 sm_ping
 ```
+
+## Overrides
+
+This plugin supports the use of [overrides](https://wiki.alliedmods.net/Overriding_Command_Access_(Sourcemod)) 
+
+- `ping_custom_duration` - Allows players with this override to specify a custom duration argument for their ping, with the syntax `sm_ping <seconds>`
+- `ping_cooldown_immunity` - Makes players immune to the cooldown system
