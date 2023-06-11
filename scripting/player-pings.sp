@@ -10,9 +10,6 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#pragma semicolon 1
-#pragma newdecls required
-
 #define NMR_MAXPLAYERS 9
 #define IN_VOICECMD	   0x80000000
 #define MATH_PI		   3.141592653
@@ -20,12 +17,15 @@
 // #define MULTIPLIER_METERS 0.01905
 // #define MULTIPLIER_FEET	  0.08333232
 
+#define PLUGIN_DESCRIPTION "Allows players to highlight entities and place markers in the world"
+#define PLUGIN_VERSION "1.0.1"
+
 public Plugin myinfo =
 {
 	name		= "Player Pings",
 	author		= "Dysphie",
-	description = "Allows players to highlight entities and place markers in the world",
-	version		= "1.0.0",
+	description = PLUGIN_DESCRIPTION,
+	version		= PLUGIN_VERSION,
 	url			= "https://github.com/dysphie/nmrih-ping-system"
 };
 
@@ -50,7 +50,7 @@ ConVar cvCircleRadius;
 
 ConVar cvAllowDead;
 
-// ConVar cvTextLocation;
+ConVar cvTextLocation;
 
 int	   g_LaserIndex;
 int	   g_HaloIndex;
@@ -71,7 +71,7 @@ public void OnPluginStart()
 	cvEnabled		  = CreateConVar("sm_ping_enabled", "1", "Whether player pings are enabled");
 	cvTokensPerSecond = CreateConVar("sm_ping_cooldown_tokens_per_second", "0.05", "Tokens added to the bucket per second");
 	cvBucketSize	  = CreateConVar("sm_ping_cooldown_bucket_size", "3", "Number of command tokens that fit in the cooldown bucket");
-	cvIconOffset	  = CreateConVar("sm_ping_icon_height_offset", "30.0", "Offset ping icon from ping position by this amount");
+	cvIconOffset	  = CreateConVar("sm_ping_text_height_offset", "30.0", "Vertically offsets the ping caption from its target position by a specified amount, in game units");
 	cvColorR		  = CreateConVar("sm_ping_color_r", "10", "The red color component for player pings");
 	cvColorG		  = CreateConVar("sm_ping_color_g", "224", "The green color component for player pings");
 	cvColorB		  = CreateConVar("sm_ping_color_b", "247", "The blue color component for player pings");
@@ -89,9 +89,11 @@ public void OnPluginStart()
 	cvAllowPlayers	  = CreateConVar("sm_ping_players", "0", "Whether pings can target other players");
 	cvAllowNPCs		  = CreateConVar("sm_ping_npcs", "0", "Whether pings can target zombies");
 	cvAllowDead		  = CreateConVar("sm_ping_dead_can_use", "1", "Whether dead players can ping");
+	cvTextLocation = CreateConVar("sm_ping_text_location", "0", "Where to place the ping text. 0 = On screen, 1 = In the world");
 
-	// TODO
-	// cvTextLocation = CreateConVar("sm_ping_text_location", "0", "Where to place the ping text. 0 = On screen, 1 = In the world");
+	CreateConVar("player_pings_version", PLUGIN_VERSION, PLUGIN_DESCRIPTION,
+    	FCVAR_SPONLY|FCVAR_NOTIFY|FCVAR_DONTRECORD);
+
 
 	cvSound.AddChangeHook(OnPingSoundConVarChanged);
 
@@ -162,7 +164,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		int oldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
 		if (!(oldButtons & IN_USE))
 		{
-			buttons &= ~IN_USE;
 			DoPing(client, cvLifetime.IntValue);
 		}
 	}
@@ -224,9 +225,10 @@ void DoPing(int client, int duration)
 	if (IsValidEdict(rayEnt) && CouldEntityGlow(rayEnt))
 	{
 		float endPos[3];
-		TR_GetEndPosition(endPos);
+		TR_GetEndPosition(endPos, rayTrace);
 
-		PingEntity(rayEnt, client, duration);
+		PingEntity(rayEnt, client, duration, endPos);
+		
 		delete rayTrace;
 		return;
 	}
@@ -268,7 +270,9 @@ void DoPing(int client, int duration)
 	{
 		float endPos[3];
 		TR_GetEndPosition(endPos, rayTrace);
-		PingEntity(hullEnt, client, duration);
+		PingEntity(hullEnt, client, duration, endPos);
+
+		// PrintToServer("using hullEnt endPos %s", StrVec(endPos));
 	}
 
 	delete hullTrace;
@@ -277,37 +281,122 @@ void DoPing(int client, int duration)
 
 bool CouldEntityGlow(int entity)
 {
-	return entity > 0 && HasEntProp(entity, Prop_Data, "m_bIsGlowable") && HasEntProp(entity, Prop_Data, "m_clrGlowColor") && HasEntProp(entity, Prop_Data, "m_flGlowDistance");
+	return entity > 0 && 
+		HasEntProp(entity, Prop_Send, "m_bGlowing") && 
+		HasEntProp(entity, Prop_Data, "m_bIsGlowable") && 
+		HasEntProp(entity, Prop_Data, "m_clrGlowColor") && 
+		HasEntProp(entity, Prop_Data, "m_flGlowDistance");
 }
 
 void PingWorld(float pos[3], float normal[3], int client, int duration)
 {
-	// Create something for our instructor to latch onto
-	int entity = CreateEntityByName("info_target_instructor_hint");
-	TeleportEntity(entity, pos);
-	DispatchSpawn(entity);
+	if (cvTextLocation.IntValue == 0)
+	{
+		// Create something for our instructor to latch onto
+		int entity = CreateEntityByName("info_target_instructor_hint");
+		TeleportEntity(entity, pos);
+		DispatchSpawn(entity);
 
-	// Give it time to network
-	DataPack data;
-	CreateDataTimer(0.1, Frame_PointAtEntity, data);
-	data.WriteCell(EntIndexToEntRef(entity));
-	data.WriteCell(GetClientSerial(client));
-	data.WriteCell(duration);
-	data.WriteFloatArray(pos, 3);
+		// Give it time to network
+		DataPack data;
+		CreateDataTimer(0.1, Frame_PointAtEntity, data);
+		data.WriteCell(EntIndexToEntRef(entity));
+		data.WriteCell(GetClientSerial(client));
+		data.WriteCell(duration);
+		data.WriteFloatArray(pos, 3);
 
-	// Delete helper entity after ping has expired
-	CreateTimer(cvLifetime.FloatValue + 0.1, Timer_DeleteHelperEntity, EntIndexToEntRef(entity));
+		// Delete helper entity after ping has expired
+		CreateTimer(cvLifetime.FloatValue + 0.1, Timer_DeleteHelperEntity, EntIndexToEntRef(entity));
+	}
+	else
+	{
+		DrawWorldTextAll(pos, client);
+	}
 
 	// Now draw beam circle where we hit
 	int rgba[4];
 	GetPingColor(rgba);
 	DrawCircleOnSurface(pos, cvCircleRadius.FloatValue, cvCircleSegments.IntValue, normal, duration);
+
+	EmitPingSoundToAll();
 }
 
-void PingEntity(int entity, int client, int duration)
+void EmitPingSoundToAll()
+{
+	char hintSound[PLATFORM_MAX_PATH];
+	cvSound.GetString(hintSound, sizeof(hintSound));
+	if (!hintSound[0]) {
+		return;
+	}
+
+	for (int client = 1; client <= MaxClients; client++)
+	{
+		if (IsClientInGame(client) && HasPingsEnabled(client))
+		{
+			EmitSoundToClient(client, hintSound, SOUND_FROM_PLAYER);
+		}
+	}
+}
+
+Action Timer_DeleteWorldText(Handle timer, int pingID)
+{
+	RemoveWorldTextAll(pingID);
+	return Plugin_Continue;
+}
+
+void RemoveWorldTextAll(int pingID)
+{
+	Handle	msg = StartMessageAll("RemovePointMessage", USERMSG_RELIABLE|USERMSG_BLOCKHOOKS);
+	BfWrite bf	= UserMessageToBfWrite(msg);
+	bf.WriteShort(pingID);
+	EndMessage();
+}
+
+void DrawWorldTextAll(float pos[3], int client)
+{
+	static int pingID = 0;
+
+	float adjustedPos[3];
+	adjustedPos[0] = pos[0];
+	adjustedPos[1] = pos[1];
+	adjustedPos[2] = pos[2] + cvIconOffset.FloatValue;
+
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (!IsClientInGame(i) || !HasPingsEnabled(i))
+		{
+			continue;
+		}
+
+		SetGlobalTransTarget(i);
+
+		char text[255];
+		Format(text, sizeof(text), "%T", "Player Ping", i, client);
+
+		Handle	msg = StartMessageOne("PointMessage", i, USERMSG_BLOCKHOOKS);
+		BfWrite bf	= UserMessageToBfWrite(msg);
+		bf.WriteString(text);
+		bf.WriteShort(pingID);
+		bf.WriteShort(0);	 // flags
+		bf.WriteVecCoord(adjustedPos);
+		bf.WriteFloat(cvRange.FloatValue);	// radius
+		bf.WriteString("PointMessageDefault");
+		bf.WriteByte(cvColorR.IntValue);	  // r
+		bf.WriteByte(cvColorG.IntValue);	  // g
+		bf.WriteByte(cvColorB.IntValue);	  // b
+
+		EndMessage();
+	}
+
+	CreateTimer(cvLifetime.FloatValue, Timer_DeleteWorldText, pingID);
+	pingID++;
+}
+
+void PingEntity(int entity, int client, int duration, float pos[3])
 {
 	HighlightEntity(entity, duration);
-	PointAtEntity(entity, client, duration);
+	PointAtEntity(entity, client, duration, pos);
+	EmitPingSoundToAll();
 }
 
 void GetPingColor(int rgba[4])
@@ -328,7 +417,7 @@ Action Frame_PointAtEntity(Handle timer, DataPack data)
 	float pingPos[3];
 	data.ReadFloatArray(pingPos, sizeof(pingPos));
 
-	PointAtEntity(entity, player, duration);
+	PointAtEntity(entity, player, duration, pingPos);
 	return Plugin_Stop;
 }
 
@@ -344,6 +433,13 @@ Action Timer_DeleteHelperEntity(Handle timer, int entRef)
 
 void HighlightEntity(int entity, int duration)
 {
+	// Don't glow if we are already glowing
+	// TODO: Handle this nicer, extending the duration
+	if (GetEntProp(entity, Prop_Send, "m_bGlowing") != 0) {
+		PrintToServer("Ignoring %d, already glowing", entity);
+		return;
+	}
+
 	char classname[80];
 	GetEntityClassname(entity, classname, sizeof(classname));
 
@@ -351,9 +447,12 @@ void HighlightEntity(int entity, int duration)
 	FormatEx(rgb, sizeof(rgb), "%d %d %d",
 			 cvColorR.IntValue, cvColorG.IntValue, cvColorB.IntValue);
 
+	
 	bool  oldIsGlowable = GetEntProp(entity, Prop_Send, "m_bIsGlowable") != 0;
 	int	  oldGlowColor	= GetEntProp(entity, Prop_Send, "m_clrGlowColor");
 	float oldGlowDist	= GetEntPropFloat(entity, Prop_Send, "m_flGlowDistance");
+
+	PrintToServer("oldIsGlowable = %d, oldGlowColor = %d, oldGlowDist = %d", oldIsGlowable, oldGlowColor, oldGlowDist);
 
 	// TODO: Why don't we use above dataprops for these?
 	DispatchKeyValue(entity, "glowable", "1");
@@ -364,7 +463,6 @@ void HighlightEntity(int entity, int duration)
 	DataPack data;
 	CreateDataTimer((float)(duration), Timer_UnhighlightEntity, data);
 	data.WriteCell(EntIndexToEntRef(entity));
-	data.WriteCell(oldIsGlowable);
 	data.WriteCell(oldGlowColor);
 	data.WriteFloat(oldGlowDist);
 }
@@ -375,14 +473,15 @@ Action Timer_UnhighlightEntity(Handle timer, DataPack data)
 	int entity = EntRefToEntIndex(data.ReadCell());
 	if (entity != -1)
 	{
-		AcceptEntityInput(entity, "DisableGlow", entity, entity);
-		SetEntProp(entity, Prop_Send, "m_bIsGlowable", data.ReadCell());
 		SetEntProp(entity, Prop_Send, "m_clrGlowColor", data.ReadCell());
 		SetEntPropFloat(entity, Prop_Send, "m_flGlowDistance", data.ReadFloat());
+
+		AcceptEntityInput(entity, "DisableGlow", entity, entity);
 	}
 
 	return Plugin_Continue;
 }
+
 
 public bool TraceFilter_IgnoreBlacklisted(int entity, int contentMask, int ignore)
 {
@@ -411,7 +510,7 @@ void ForwardVector(const float vPos[3], const float vAng[3], float fDistance, fl
 	vReturn[2] += vDir[2] * fDistance;
 }
 
-void PointAtEntity(int entity, int issuer, int duration)
+void PointAtEntity(int entity, int issuer, int duration, float pos[3])
 {
 	int rgba[4];
 	GetPingColor(rgba);
@@ -439,32 +538,37 @@ void PointAtEntity(int entity, int issuer, int duration)
 		char caption[255];
 		FormatEx(caption, sizeof(caption), "%T", "Player Ping", client, issuer);
 
-		Event event = CreateEvent("instructor_server_hint_create", true);
-		event.SetString("hint_caption", caption);
-		event.SetString("hint_activator_caption", caption);
-		event.SetString("hint_name", hintKey);
-		event.SetString("hint_replace_key", hintKey);
-		event.SetInt("hint_target", entity);
-		event.SetInt("hint_activator_userid", GetClientUserId(client));
-		event.SetInt("hint_timeout", duration);
-		event.SetString("hint_icon_onscreen", icon);
-		event.SetString("hint_icon_offscreen", icon);
-		event.SetString("hint_color", rgb);
-		event.SetFloat("hint_icon_offset", cvIconOffset.FloatValue);
-		event.SetFloat("hint_range", cvRange.FloatValue);
-		event.SetInt("hint_flags", 0);
-		event.SetString("hint_binding", "");
-		event.SetBool("hint_allow_nodraw_target", true);
-		event.SetBool("hint_nooffscreen", icon[0] == '\0');
-		event.SetBool("hint_forcecaption", false);
-		event.SetBool("hint_local_player_only", false);
-		event.SetString("hint_start_sound", "common/null.wav");	   // We will play our own which isn't buggy
-		event.SetInt("hint_target_pos", 2);						   // World center
-		event.FireToClient(client);
+		if (cvTextLocation.IntValue == 0)
+		{
 
-		EmitSoundToClient(client, hintSound, SOUND_FROM_PLAYER);
-
-		event.Cancel();
+			Event event = CreateEvent("instructor_server_hint_create", true);
+			event.SetString("hint_caption", caption);
+			event.SetString("hint_activator_caption", caption);
+			event.SetString("hint_name", hintKey);
+			event.SetString("hint_replace_key", hintKey);
+			event.SetInt("hint_target", entity);
+			event.SetInt("hint_activator_userid", GetClientUserId(client));
+			event.SetInt("hint_timeout", duration);
+			event.SetString("hint_icon_onscreen", icon);
+			event.SetString("hint_icon_offscreen", icon);
+			event.SetString("hint_color", rgb);
+			event.SetFloat("hint_icon_offset", cvIconOffset.FloatValue);
+			event.SetFloat("hint_range", cvRange.FloatValue);
+			event.SetInt("hint_flags", 0);
+			event.SetString("hint_binding", "");
+			event.SetBool("hint_allow_nodraw_target", true);
+			event.SetBool("hint_nooffscreen", icon[0] == '\0');
+			event.SetBool("hint_forcecaption", false);
+			event.SetBool("hint_local_player_only", false);
+			event.SetString("hint_start_sound", "common/null.wav");	   // We will play our own which isn't buggy
+			event.SetInt("hint_target_pos", 2);						   // World center
+			event.FireToClient(client);
+			event.Cancel();
+		}
+		else
+		{
+			DrawWorldTextAll(pos, client);
+		}
 	}
 }
 
