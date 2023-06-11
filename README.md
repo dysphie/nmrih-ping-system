@@ -3,6 +3,8 @@
 This plugin allows players to point at the world and create a visual and audible ping that can be seen and heard by other players. 
 The ping can be used to communicate locations, objectives, enemies, items, or anything else in the game world.
 
+![image](https://github.com/dysphie/nmrih-ping-system/assets/11559683/d44a09e7-30cf-40f7-902a-aef0c336a607)
+
 ## Features
 
 - Customizable ping icon, color, sound, lifetime, and size
@@ -14,14 +16,14 @@ The ping can be used to communicate locations, objectives, enemies, items, or an
 - Grab the latest ZIP from releases
 - Extract the contents into `addons/sourcemod`
 - Relaod your translations: `sm_reload_translations` in server console
-- Load the plugin: `sm plugins load ping`
+- Load the plugin: `sm plugins load player-pings`
 
 ## Optional requirements
 - The Client Preferences extension to allow players to hide pings via `sm_settings`
 
 ## Configuration
 
-You can configure the plugin by editing the following console variables in `cfg/sourcemod/ping.cfg`:
+You can configure the plugin by editing the following console variables in `cfg/sourcemod/player-pings.cfg`:
 
 | Variable | Description | Default |
 | --- | --- | --- |
@@ -45,8 +47,17 @@ You can configure the plugin by editing the following console variables in `cfg/
 
 ## Usage
 
-To use the plugin, bind a key to the `sm_ping` command. For example:
+A.   Open the voice menu (Default: 3) and press the Use key (Default: E)
+
+B.   Bind a key to the `sm_ping` command. For example:
 
 ```
 bind mouse3 sm_ping
 ```
+
+## Overrides
+
+This plugin supports the use of [overrides](https://wiki.alliedmods.net/Overriding_Command_Access_(Sourcemod)) 
+
+- `ping_custom_duration` - Allows players with this override to specify a custom duration argument for their ping, with the syntax `sm_ping <seconds>`
+- `ping_cooldown_immunity` - Makes players immune to the cooldown system
