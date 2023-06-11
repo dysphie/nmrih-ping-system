@@ -271,8 +271,6 @@ void DoPing(int client, int duration)
 		float endPos[3];
 		TR_GetEndPosition(endPos, rayTrace);
 		PingEntity(hullEnt, client, duration, endPos);
-
-		// PrintToServer("using hullEnt endPos %s", StrVec(endPos));
 	}
 
 	delete hullTrace;
@@ -436,7 +434,6 @@ void HighlightEntity(int entity, int duration)
 	// Don't glow if we are already glowing
 	// TODO: Handle this nicer, extending the duration
 	if (GetEntProp(entity, Prop_Send, "m_bGlowing") != 0) {
-		PrintToServer("Ignoring %d, already glowing", entity);
 		return;
 	}
 
@@ -447,12 +444,8 @@ void HighlightEntity(int entity, int duration)
 	FormatEx(rgb, sizeof(rgb), "%d %d %d",
 			 cvColorR.IntValue, cvColorG.IntValue, cvColorB.IntValue);
 
-	
-	bool  oldIsGlowable = GetEntProp(entity, Prop_Send, "m_bIsGlowable") != 0;
 	int	  oldGlowColor	= GetEntProp(entity, Prop_Send, "m_clrGlowColor");
 	float oldGlowDist	= GetEntPropFloat(entity, Prop_Send, "m_flGlowDistance");
-
-	PrintToServer("oldIsGlowable = %d, oldGlowColor = %d, oldGlowDist = %d", oldIsGlowable, oldGlowColor, oldGlowDist);
 
 	// TODO: Why don't we use above dataprops for these?
 	DispatchKeyValue(entity, "glowable", "1");
