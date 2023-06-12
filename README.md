@@ -60,7 +60,6 @@ This plugin supports the use of [overrides](https://wiki.alliedmods.net/Overridi
 
 - `ping_custom_duration` - Allows players to specify a custom duration argument for their ping, with the syntax `sm_ping <seconds>`
 - `ping_cooldown_immunity` - Makes players immune to the cooldown system
-Here is a possible section for the license:
 
 ## Translations
 
