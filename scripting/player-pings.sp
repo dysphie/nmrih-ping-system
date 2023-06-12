@@ -537,8 +537,6 @@ void DrawInstructorToAll(int entity, int issuer, int duration)
 	char color[40];
 	FormatEx(color, sizeof(color), "%d,%d,%d", r, g, b);
 
-	PrintToServer("DrawInstruct %s", color);
-
 	char icon[32];
 	cvIcon.GetString(icon, sizeof(icon));
 
@@ -635,8 +633,6 @@ public void OnMapStart()
 
 void DrawCircleOnSurface(float center[3], float radius, int segments, float normal[3], int duration, int color[3])
 {
-	PrintToServer("DrawCircleOnSurface = %d %d %d", color[0], color[1], color[2]);
-
 	float prevPoint[3], currPoint[3];
 	float tangent1[3], tangent2[3];
 
@@ -716,14 +712,7 @@ any min(any x, any y)
 
 bool HasPingsEnabled(int client)
 {
-	if (!AreClientCookiesCached(client))
-	{
-		PrintToServer("HasPingsEnabled 1");
-		return true;
-	}
-	
-	PrintToServer("HasPingsEnabled %d", optOutCookie.GetInt(client) == 0);
-	return optOutCookie.GetInt(client) == 0;	
+	return !AreClientCookiesCached(client) || optOutCookie.GetInt(client) == 0;
 }
 
 public void OnClientConnected(int client)
