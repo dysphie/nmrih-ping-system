@@ -1,8 +1,33 @@
 "Phrases"
 {
-    "Player Ping"
+    "Hammer Units"
     {
-        "#format"    "{1:N}"
+        "en"    "h/u"
+        "es"    "u/h"
+    }
+
+    "Feet"
+    {
+        "en"    "ft"
+        "es"    "pies"
+    }
+
+    "Meters"
+    {
+        "en"    "m"
+        "es"    "m"
+    }
+
+    "Caption With Distance"
+    {
+        "#format" "{1:s},{2:.f},{3:T}"
+        "en"    "{1} points ({2}{3})"
+        "es"    "{1} señala ({2}{3})"
+    }
+
+    "Caption"
+    {
+        "#format"    "{1:s}"
         "en"         "{1} points"
         "es"         "{1} señala"
     }

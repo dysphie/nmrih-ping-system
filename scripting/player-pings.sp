@@ -2,27 +2,25 @@
 #include <sdktools>
 #include <morecolors>
 
-#undef REQUIRE_PLUGIN
+#undef REQUIRE_EXTENSIONS
 #include <clientprefs>
-#define REQUIRE_PLUGIN
+#define REQUIRE_EXTENSIONS
 
 #pragma semicolon 1
 #pragma newdecls required
 
-#define NMR_MAXPLAYERS 9
-#define IN_VOICECMD	   0x80000000
-#define MATH_PI		   3.141592653
-#define ADMFLAG_PING   ADMFLAG_GENERIC
-// #define MULTIPLIER_METERS 0.01905
-// #define MULTIPLIER_FEET	  0.08333232
+#define NMR_MAXPLAYERS	   9
+#define IN_VOICECMD		   0x80000000
+#define MATH_PI			   3.141592653
+#define ADMFLAG_PING	   ADMFLAG_GENERIC
 
-#define R 0
-#define G 1
-#define B 2
-#define A 3
+#define R				   0
+#define G				   1
+#define B				   2
+#define A				   3
 
 #define PLUGIN_DESCRIPTION "Allows players to highlight entities and place markers in the world"
-#define PLUGIN_VERSION "1.0.2"
+#define PLUGIN_VERSION	   "1.0.3"
 
 public Plugin myinfo =
 {
@@ -32,6 +30,17 @@ public Plugin myinfo =
 	version		= PLUGIN_VERSION,
 	url			= "https://github.com/dysphie/nmrih-ping-system"
 };
+
+enum Unit
+{
+	Unit_Default = -1,
+	Unit_Meters,
+	Unit_Feet,
+	Unit_Hammer,
+	Unit_MAX
+}
+
+bool g_ClientPrefs;
 
 ConVar cvEnabled;
 ConVar cvLifetime;
@@ -45,6 +54,10 @@ ConVar cvBucketSize;
 ConVar cvTokensPerSecond;
 ConVar cvSound;
 
+ConVar cvShowDistance;
+ConVar cvShowDistanceInterval;
+ConVar cvDistanceUnits;
+
 ConVar cvAllowNPCs;
 ConVar cvAllowPlayers;
 
@@ -57,57 +70,101 @@ ConVar cvAllowDead;
 
 ConVar cvTextLocation;
 
+ConVar cvGlobalCooldown;
+
 int	   g_LaserIndex;
 int	   g_HaloIndex;
 
-float  tokens;
-float  lastUpdate;
-
 Cookie optOutCookie;
+Cookie unitsCookie;
 
-int g_PingColor[NMR_MAXPLAYERS+1][3];
+float  g_Tokens[NMR_MAXPLAYERS + 1];
+float  g_LastUpdate[NMR_MAXPLAYERS + 1];
+int	   g_PingColor[NMR_MAXPLAYERS + 1][3];
+
+public void OnAllPluginsLoaded()
+{
+	g_ClientPrefs = LibraryExists("clientprefs");
+}
+
+public void OnLibraryRemoved(const char[] name)
+{
+	if (StrEqual(name, "clientprefs"))
+	{
+		g_ClientPrefs = false;
+	}
+}
+
+public void OnLibraryAdded(const char[] name)
+{
+	if (StrEqual(name, "clientprefs"))
+	{
+		g_ClientPrefs = true;
+		RegisterCookies();
+	}
+}
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+	MarkNativeAsOptional("Cookie.Cookie");
+	MarkNativeAsOptional("Cookie.Get");
+	MarkNativeAsOptional("Cookie.GetInt");
+	MarkNativeAsOptional("Cookie.Set");
+	MarkNativeAsOptional("Cookie.SetInt");
+	MarkNativeAsOptional("SetCookieMenuItem");
+	return APLRes_Success;
+}
 
 public void OnPluginStart()
 {
-	optOutCookie = new Cookie("disable_player_pings", "Toggles seeing player pings", CookieAccess_Private);
-
-	SetCookieMenuItem(CustomCookieMenu, 0, "Player Pings");
-
 	LoadTranslations("player-pings.phrases");
 
-	cvEnabled		  = CreateConVar("sm_ping_enabled", "1", "Whether player pings are enabled");
-	cvTokensPerSecond = CreateConVar("sm_ping_cooldown_tokens_per_second", "0.05", "Tokens added to the bucket per second");
-	cvBucketSize	  = CreateConVar("sm_ping_cooldown_bucket_size", "3", "Number of command tokens that fit in the cooldown bucket");
-	cvIconOffset	  = CreateConVar("sm_ping_text_height_offset", "30.0", "Vertically offsets the ping caption from its target position by a specified amount, in game units");
-	cvColorR		  = CreateConVar("sm_ping_color_r", "10", "The red color component for player pings");
-	cvColorG		  = CreateConVar("sm_ping_color_g", "224", "The green color component for player pings");
-	cvColorB		  = CreateConVar("sm_ping_color_b", "247", "The blue color component for player pings");
+	cvEnabled			   = CreateConVar("sm_ping_enabled", "1", "Whether player pings are enabled");
+	cvTokensPerSecond	   = CreateConVar("sm_ping_cooldown_tokens_per_second", "0.05", "Tokens added to the bucket per second");
+	cvBucketSize		   = CreateConVar("sm_ping_cooldown_bucket_size", "3", "Number of command tokens that fit in the cooldown bucket");
+	cvGlobalCooldown	   = CreateConVar("sm_ping_cooldown_shared", "1", "Whether the ping cooldown applies to all players or each player separately");
+	cvIconOffset		   = CreateConVar("sm_ping_text_height_offset", "30.0", "Vertically offsets the ping caption from its target position by a specified amount, in game units");
+	cvColorR			   = CreateConVar("sm_ping_color_r", "10", "The red color component for player pings");
+	cvColorG			   = CreateConVar("sm_ping_color_g", "224", "The green color component for player pings");
+	cvColorB			   = CreateConVar("sm_ping_color_b", "247", "The blue color component for player pings");
+	cvShowDistance		   = CreateConVar("sm_ping_distance_show", "0", "If true, shows distance to the ping location in the caption");
+	cvShowDistanceInterval = CreateConVar("sm_ping_distance_update_interval", "0.3", "How often distance is updated in the ping caption");
+	cvDistanceUnits		   = CreateConVar("sm_ping_distance_default_units", "0", "Default distance units for players without preference. 0 = Meters, 1 = Feet, 2 = Hammer units", _,
+										  true, 0.0, true, (float)(view_as<int>(Unit_MAX) - 1));
 
-	cvRandomizeColor = CreateConVar("sm_ping_color_randomize", "1", "If true, randomize the ping color for each player instead of using RGB variables");
-
-	// TODO: instructors have a hard limit of 25.6 seconds lifetime, we should bypass this by sending multiple, clamp the cvar for now
-	// DataTable warning: [unknown]: Out-of-range value (60.000000/25.600000) in SendPropFloat 'm_fLife', clamping.
-	cvLifetime		  = CreateConVar("sm_ping_lifetime", "8", "The lifetime of player pings in seconds", _, true, 1.0, true, 25.6);
-	cvRange			  = CreateConVar("sm_ping_range", "32000", "The maximum reach of the player ping trace in game units");
-	cvIcon			  = CreateConVar("sm_ping_icon", "icon_interact", "The icon used for player pings. Empty to disable");
-	cvSound			  = CreateConVar("sm_ping_sound", "ui/hint.wav", "The sound used for player pings");
-	cvCircleRadius	  = CreateConVar("sm_ping_circle_radius", "9.0", "Radius of the ping circle");
-	cvCircleSegments  = CreateConVar("sm_ping_circle_segments", "10", "How many straight lines make up the ping circle");
-	cvAllowPlayers	  = CreateConVar("sm_ping_players", "0", "Whether pings can target other players");
-	cvAllowNPCs		  = CreateConVar("sm_ping_npcs", "0", "Whether pings can target zombies");
-	cvAllowDead		  = CreateConVar("sm_ping_dead_can_use", "1", "Whether dead players can ping");
-	cvTextLocation = CreateConVar("sm_ping_text_location", "0", "Where to place the ping text. 0 = On screen, 1 = In the world");
+	cvRandomizeColor	   = CreateConVar("sm_ping_color_randomize", "1", "If true, randomize the ping color for each player instead of using RGB variables");
+	cvLifetime			   = CreateConVar("sm_ping_lifetime", "8", "The lifetime of player pings in seconds", _, true, 1.0);
+	cvRange				   = CreateConVar("sm_ping_range", "32000", "The maximum reach of the player ping trace in game units");
+	cvIcon				   = CreateConVar("sm_ping_icon", "icon_interact", "The icon used for player pings. Empty to disable");
+	cvSound				   = CreateConVar("sm_ping_sound", "ui/hint.wav", "The sound used for player pings");
+	cvCircleRadius		   = CreateConVar("sm_ping_circle_radius", "9.0", "Radius of the ping circle");
+	cvCircleSegments	   = CreateConVar("sm_ping_circle_segments", "10", "How many straight lines make up the ping circle");
+	cvAllowPlayers		   = CreateConVar("sm_ping_players", "0", "Whether pings can target other players");
+	cvAllowNPCs			   = CreateConVar("sm_ping_npcs", "0", "Whether pings can target zombies");
+	cvAllowDead			   = CreateConVar("sm_ping_dead_can_use", "1", "Whether dead players can ping");
+	cvTextLocation		   = CreateConVar("sm_ping_text_location", "0", "Where to place the ping text. 0 = On screen, 1 = In the world");
 
 	CreateConVar("player_pings_version", PLUGIN_VERSION, PLUGIN_DESCRIPTION,
-    	FCVAR_SPONLY|FCVAR_NOTIFY|FCVAR_DONTRECORD);
-
+				 FCVAR_SPONLY | FCVAR_NOTIFY | FCVAR_DONTRECORD);
 
 	cvSound.AddChangeHook(OnPingSoundConVarChanged);
 
 	AutoExecConfig(true, "player-pings");
 	RegConsoleCmd("sm_ping", Cmd_Ping, "Place a marker on the location you are pointing at");
 
+	if (LibraryExists("clientprefs"))
+	{
+		RegisterCookies();
+	}
+
 	SupportLateload();
+}
+
+void RegisterCookies()
+{
+	optOutCookie = new Cookie("disable_player_pings", "Toggles seeing player pings", CookieAccess_Private);
+	unitsCookie	 = new Cookie("player_ping_units", "Distance units to use for player pings", CookieAccess_Private);
+	SetCookieMenuItem(CustomCookieMenu, 0, "Player Pings");
 }
 
 void SupportLateload()
@@ -123,26 +180,35 @@ void SupportLateload()
 
 void CustomCookieMenu(int client, CookieMenuAction action, any info, char[] buffer, int maxlen)
 {
-	ShowPingSettingsMenu(client);
+	CookiesMenu(client);
 }
 
-void ShowPingSettingsMenu(int client)
+void CookiesMenu(int client)
 {
-	Menu menu = new Menu(MainMenuHandler, MenuAction_DisplayItem);
+	Menu menu = new Menu(MenuHandler_CookiesMenu, MenuAction_DisplayItem);
 
 	char buffer[255];
 	FormatEx(buffer, sizeof(buffer), "%T", "Ping Settings Title", client);
 	menu.SetTitle(buffer);
 
 	FormatEx(buffer, sizeof(buffer), "%T: %T", "Setting: Toggle", client,
-			HasPingsEnabled(client) ? "Cookie Enabled" : "Cookie Disabled", client);
+			 HasPingsEnabled(client) ? "Cookie Enabled" : "Cookie Disabled", client);
 
 	menu.AddItem("toggle", buffer);
+
+	Unit unit = GetClientUnits(client);
+
+	char unitPhrase[32];
+	GetUnitsPhraseLong(unit, unitPhrase, sizeof(unitPhrase));
+
+	FormatEx(buffer, sizeof(buffer), "%T: %T", "Setting: Units", client, unitPhrase, client);
+
+	menu.AddItem("units", buffer);
 
 	menu.Display(client, MENU_TIME_FOREVER);
 }
 
-int MainMenuHandler(Menu menu, MenuAction action, int param1, int param2)
+int MenuHandler_CookiesMenu(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_End)
 	{
@@ -162,8 +228,23 @@ int MainMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 		{
 			bool optedOut = optOutCookie.GetInt(client) != 0;
 			optOutCookie.SetInt(client, !optedOut);
-			ShowPingSettingsMenu(client);
 		}
+
+		else if (StrEqual(info, "units"))
+		{
+			Unit unit = GetClientUnits(client);
+			unit++;
+
+			if (unit >= Unit_MAX)
+			{
+				unit = Unit_Meters;
+			}
+
+			SetClientUnits(client, unit);
+		}
+
+		// Redraw the menu
+		CookiesMenu(client);
 	}
 
 	return 0;
@@ -196,6 +277,11 @@ Action Cmd_Ping(int client, int args)
 	if (!IsDedicatedServer() && GetCmdReplySource() == SM_REPLY_TO_CONSOLE)
 	{
 		client = FindEntityByClassname(-1, "player");
+	}
+
+	if (!client)
+	{
+		CReplyToCommand(client, "In-game command only.");
 	}
 
 	if (!cvEnabled.BoolValue)
@@ -238,7 +324,7 @@ void DoPing(int client, int duration)
 	GetClientEyePosition(client, eyePos);
 
 	// Start with an accurate trace ray
-	Handle rayTrace = TR_TraceRayFilterEx(eyePos, eyeAng, MASK_ALL, RayType_Infinite, TraceFilter_IgnoreBlacklisted, client);
+	Handle rayTrace = TR_TraceRayFilterEx(eyePos, eyeAng, MASK_VISIBLE, RayType_Infinite, TraceFilter_Ping, client);
 	int	   rayEnt	= TR_GetEntityIndex(rayTrace);
 
 	// Check if we hit an entity with the ray
@@ -248,14 +334,13 @@ void DoPing(int client, int duration)
 		TR_GetEndPosition(endPos, rayTrace);
 
 		PingEntity(rayEnt, client, duration);
-		
+
 		delete rayTrace;
 		return;
 	}
 
 	// If we hit nothing, try again using a swept hull
 
-	
 	float hullStart[3];
 	ForwardVector(eyePos, eyeAng, 32.0, hullStart);
 
@@ -274,7 +359,7 @@ void DoPing(int client, int duration)
 	hullMaxs[1]		 = traceWidth;
 	hullMaxs[2]		 = traceWidth;
 
-	Handle hullTrace = TR_TraceHullFilterEx(hullStart, hullEnd, hullMins, hullMaxs, MASK_ALL, TraceFilter_IgnoreBlacklisted, client);
+	Handle hullTrace = TR_TraceHullFilterEx(hullStart, hullEnd, hullMins, hullMaxs, MASK_VISIBLE, TraceFilter_Ping, client);
 
 	int	   hullEnt	 = TR_GetEntityIndex(hullTrace);
 
@@ -300,11 +385,10 @@ void DoPing(int client, int duration)
 
 bool CouldEntityGlow(int entity)
 {
-	return entity > 0 && 
-		HasEntProp(entity, Prop_Send, "m_bGlowing") && 
-		HasEntProp(entity, Prop_Data, "m_bIsGlowable") && 
-		HasEntProp(entity, Prop_Data, "m_clrGlowColor") && 
-		HasEntProp(entity, Prop_Data, "m_flGlowDistance");
+	char classname[32];
+	GetEntityClassname(entity, classname, sizeof(classname));
+
+	return IsValidEdict(entity) && HasEntProp(entity, Prop_Send, "m_bGlowing") && HasEntProp(entity, Prop_Data, "m_bIsGlowable") && HasEntProp(entity, Prop_Data, "m_clrGlowColor") && HasEntProp(entity, Prop_Data, "m_flGlowDistance");
 }
 
 void PingWorld(float pos[3], float normal[3], int issuer, int duration)
@@ -318,17 +402,17 @@ void PingWorld(float pos[3], float normal[3], int issuer, int duration)
 
 		// Give it time to network
 		DataPack data;
-		CreateDataTimer(0.1, Frame_DrawInstructorToAll, data);
+		CreateDataTimer(0.1, Frame_BeginDrawInstructorAll, data);
 		data.WriteCell(EntIndexToEntRef(entity));
 		data.WriteCell(GetClientSerial(issuer));
 		data.WriteCell(duration);
 
 		// Delete helper entity after ping has expired
-		CreateTimer(cvLifetime.FloatValue + 0.1, Timer_DeleteHelperEntity, EntIndexToEntRef(entity));
+		CreateTimer(float(duration) + 0.1, Timer_DeleteHelperEntity, EntIndexToEntRef(entity));
 	}
 	else
 	{
-		DrawWorldTextAll(pos, issuer);
+		BeginDrawWorldTextAll(pos, issuer, duration);
 	}
 
 	// Now draw beam circle where we hit
@@ -341,7 +425,8 @@ void EmitPingSoundToAll()
 {
 	char hintSound[PLATFORM_MAX_PATH];
 	cvSound.GetString(hintSound, sizeof(hintSound));
-	if (!hintSound[0]) {
+	if (!hintSound[0])
+	{
 		return;
 	}
 
@@ -362,87 +447,248 @@ Action Timer_DeleteWorldText(Handle timer, int pingID)
 
 void RemoveWorldTextAll(int pingID)
 {
-	Handle	msg = StartMessageAll("RemovePointMessage", USERMSG_RELIABLE|USERMSG_BLOCKHOOKS);
+	Handle	msg = StartMessageAll("RemovePointMessage", USERMSG_RELIABLE | USERMSG_BLOCKHOOKS);
 	BfWrite bf	= UserMessageToBfWrite(msg);
 	bf.WriteShort(pingID);
 	EndMessage();
 }
 
-void DrawWorldTextAll(float pos[3], int issuer)
+void BeginDrawWorldTextAll(float pos[3], int issuer, int duration)
 {
-	static int pingID = 5000; // Don't nuke
+	static int pingID		= 5000;	   // Don't nuke
 
+	bool	   showDistance = cvShowDistance.BoolValue;
+
+	char	   issuerName[MAX_NAME_LENGTH];
+	GetClientName(issuer, issuerName, sizeof(issuerName));
+
+	DrawWorldTextAll(pingID, pos, g_PingColor[issuer], issuerName, showDistance);
+
+	if (!showDistance)
+	{
+		// If we don't display distance we just need one single use timer
+		CreateTimer(cvLifetime.FloatValue, Timer_DeleteWorldText, pingID);
+	}
+	else
+	{
+		// Otherwise we constantly update the thing
+		DataPack data;
+		CreateDataTimer(cvShowDistanceInterval.FloatValue, Timer_UpdateWorldTextAll, data, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+		data.WriteFloat(GetGameTime() + (float)(duration));
+		data.WriteCell(pingID);
+		data.WriteFloatArray(pos, sizeof(pos));
+		data.WriteCellArray(g_PingColor[issuer], sizeof(g_PingColor[]));
+		data.WriteString(issuerName);
+	}
+
+	pingID++;
+}
+
+void DrawWorldTextAll(int pingID, float pos[3], int color[3], const char[] issuerName, bool showDistance = false)
+{
 	float adjustedPos[3];
 	adjustedPos[0] = pos[0];
 	adjustedPos[1] = pos[1];
 	adjustedPos[2] = pos[2] + cvIconOffset.FloatValue;
 
-	int r = g_PingColor[issuer][R];
-	int g = g_PingColor[issuer][G];
-	int b = g_PingColor[issuer][B];
-
-	for (int i = 1; i <= MaxClients; i++)
+	for (int client = 1; client <= MaxClients; client++)
 	{
-		if (!IsClientInGame(i) || !HasPingsEnabled(i))
+		if (!IsClientInGame(client) || !HasPingsEnabled(client))
 		{
 			continue;
 		}
 
-		SetGlobalTransTarget(i);
+		SetGlobalTransTarget(client);
 
-		char text[255];
-		Format(text, sizeof(text), "%T", "Player Ping", i, issuer);
+		char caption[255];
+		FormatCaptionForClient(issuerName, pos, showDistance, client, caption, sizeof(caption));
 
-		Handle	msg = StartMessageOne("PointMessage", i, USERMSG_BLOCKHOOKS);
+		Handle	msg = StartMessageOne("PointMessage", client, USERMSG_BLOCKHOOKS);
 		BfWrite bf	= UserMessageToBfWrite(msg);
-		bf.WriteString(text);
+		bf.WriteString(caption);
 		bf.WriteShort(pingID);
 		bf.WriteShort(0);	 // flags
 		bf.WriteVecCoord(adjustedPos);
-		bf.WriteFloat(cvRange.FloatValue);	// radius
+		bf.WriteFloat(cvRange.FloatValue);	  // radius
 		bf.WriteString("PointMessageDefault");
-		bf.WriteByte(r);	  // r
-		bf.WriteByte(g);	  // g
-		bf.WriteByte(b);	  // b
+		bf.WriteByte(color[R]);	   // r
+		bf.WriteByte(color[G]);	   // g
+		bf.WriteByte(color[B]);	   // b
 
 		EndMessage();
 	}
+}
 
-	CreateTimer(cvLifetime.FloatValue, Timer_DeleteWorldText, pingID);
-	pingID++;
+void FormatCaptionForClient(const char[] issuerName, float pos[3], bool showDistance, int client, char[] buffer, int maxlen)
+{
+	if (showDistance)
+	{
+		float clientPos[3];
+		GetClientAbsOrigin(client, clientPos);
+
+		float distance = GetVectorDistance(pos, clientPos);
+
+		Unit  units	   = GetClientUnits(client);
+		distance *= GetUnitMultiplier(units);
+
+		char unitsPhrase[32];
+		GetUnitsPhrase(units, unitsPhrase, sizeof(unitsPhrase));
+
+		Format(buffer, maxlen, "%T", "Caption With Distance", client, issuerName, distance, unitsPhrase, client);
+	}
+	else
+	{
+		Format(buffer, maxlen, "%T", "Caption", client, issuerName);
+	}
+}
+
+void GetUnitsPhrase(Unit unit, char[] buffer, int maxlen)
+{
+	char phrases[][] = {
+		"Meters, Short",
+		"Feet, Short",
+		"Hammer Units, Short"
+	};
+
+	strcopy(buffer, maxlen, phrases[unit]);
+}
+
+void GetUnitsPhraseLong(Unit unit, char[] buffer, int maxlen)
+{
+	char phrases[][] = {
+		"Meters, Long",
+		"Feet, Long",
+		"Hammer Units, Long"
+	};
+
+	strcopy(buffer, maxlen, phrases[unit]);
+}
+
+Action Timer_UpdateWorldTextAll(Handle timer, DataPack data)
+{
+	data.Reset();
+
+	float endTime = data.ReadFloat();
+	int	  pingID  = data.ReadCell();
+
+	if (GetGameTime() >= endTime)
+	{
+		RemoveWorldTextAll(pingID);
+		return Plugin_Stop;
+	}
+
+	float pos[3];
+	data.ReadFloatArray(pos, sizeof(pos));
+
+	int color[3];
+	data.ReadCellArray(color, sizeof(color));
+
+	char issuerName[MAX_NAME_LENGTH];
+	data.ReadString(issuerName, sizeof(issuerName));
+
+	DrawWorldTextAll(pingID, pos, color, issuerName, true);
+	return Plugin_Continue;
 }
 
 void PingEntity(int entity, int issuer, int duration)
 {
 	HighlightEntity(entity, duration, g_PingColor[issuer]);
 
-	if (cvTextLocation.IntValue == 0) 
+	if (cvTextLocation.IntValue == 0)
 	{
-		DrawInstructorToAll(entity, issuer, duration);
-	} 
-	else 
+		BeginDrawInstructorAll(entity, issuer, duration);
+	}
+	else
 	{
 		float pos[3];
 		GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pos);
-		DrawWorldTextAll(pos, issuer);
+		BeginDrawWorldTextAll(pos, issuer, duration);
 	}
 
 	EmitPingSoundToAll();
 }
 
-Action Frame_DrawInstructorToAll(Handle timer, DataPack data)
+Action Frame_BeginDrawInstructorAll(Handle timer, DataPack data)
 {
 	data.Reset();
-	int	  entity   = EntRefToEntIndex(data.ReadCell());
-	int	  issuer   = GetClientFromSerial(data.ReadCell());
-	int	  duration = data.ReadCell();
+	int entity	 = EntRefToEntIndex(data.ReadCell());
+	int issuer	 = GetClientFromSerial(data.ReadCell());
+	int duration = data.ReadCell();
 
-	if (!issuer || !IsClientInGame(issuer) || !IsValidEntity(entity)) {
+	if (!issuer || !IsClientInGame(issuer) || !IsValidEntity(entity))
+	{
 		return Plugin_Stop;
 	}
 
-	DrawInstructorToAll(entity, issuer, duration);
+	BeginDrawInstructorAll(entity, issuer, duration);
 	return Plugin_Stop;
+}
+
+void BeginDrawInstructorAll(int entity, int issuer, int duration)
+{
+	float pos[3];
+	GetEntityAbsOrigin(entity, pos);
+
+	bool showDistance = cvShowDistance.BoolValue;
+
+	char issuerName[MAX_NAME_LENGTH];
+	GetClientName(issuer, issuerName, sizeof(issuerName));
+
+	DrawInstructorToAll(entity, pos, g_PingColor[issuer], issuerName, duration, showDistance);
+
+	if (!showDistance)
+	{
+		return;
+	}
+
+	DataPack data;
+	CreateDataTimer(cvShowDistanceInterval.FloatValue, Timer_UpdateInstructorAll, data, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+	data.WriteFloat(GetGameTime() + (float)(duration));
+	data.WriteCell(EntIndexToEntRef(entity));
+	data.WriteFloatArray(pos, sizeof(pos));
+	data.WriteCellArray(g_PingColor[issuer], sizeof(g_PingColor[]));
+	data.WriteString(issuerName);
+	data.WriteCell(showDistance);
+}
+
+Action Timer_UpdateInstructorAll(Handle timer, DataPack data)
+{
+	data.Reset();
+
+	float endTime = data.ReadFloat();
+	int	  entity  = EntRefToEntIndex(data.ReadCell());
+
+	if (GetGameTime() >= endTime || !IsValidEntity(entity))
+	{
+		return Plugin_Stop;
+	}
+
+	float pos[3];
+	data.ReadFloatArray(pos, sizeof(pos));
+
+	int color[3];
+	data.ReadCellArray(color, sizeof(color));
+
+	char issuerName[MAX_NAME_LENGTH];
+	data.ReadString(issuerName, sizeof(issuerName));
+
+	bool showDistance = data.ReadCell();
+
+	DrawInstructorToAll(entity, pos, color, issuerName, cvShowDistanceInterval.IntValue + 1, showDistance);
+	return Plugin_Continue;
+}
+
+// void RemoveInstructorAll(int client, const char[] hintName)
+// {
+//     Event event = CreateEvent("instructor_server_hint_stop", true);
+//     event.SetString("hint_name", hintName);
+//     event.FireToClient(client);
+//     event.Close();
+// }
+
+void GetEntityAbsOrigin(int entity, float pos[3])
+{
+	GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pos);
 }
 
 Action Timer_DeleteHelperEntity(Handle timer, int entRef)
@@ -458,8 +704,9 @@ Action Timer_DeleteHelperEntity(Handle timer, int entRef)
 void HighlightEntity(int entity, int duration, int color[3])
 {
 	// Don't glow if we are already glowing
-	// TODO: Handle this nicer, extending the duration
-	if (GetEntProp(entity, Prop_Send, "m_bGlowing") != 0) {
+	// TODO: Handle this more nicely, extend the duration?
+	if (GetEntProp(entity, Prop_Send, "m_bGlowing") != 0)
+	{
 		return;
 	}
 
@@ -469,8 +716,8 @@ void HighlightEntity(int entity, int duration, int color[3])
 	char rgb[40];
 	FormatEx(rgb, sizeof(rgb), "%d %d %d", color[R], color[G], color[B]);
 
-	int	  oldGlowColor	= GetEntProp(entity, Prop_Send, "m_clrGlowColor");
-	float oldGlowDist	= GetEntPropFloat(entity, Prop_Send, "m_flGlowDistance");
+	int	  oldGlowColor = GetEntProp(entity, Prop_Send, "m_clrGlowColor");
+	float oldGlowDist  = GetEntPropFloat(entity, Prop_Send, "m_flGlowDistance");
 
 	// TODO: Why don't we use above dataprops for these?
 	DispatchKeyValue(entity, "glowable", "1");
@@ -500,8 +747,7 @@ Action Timer_UnhighlightEntity(Handle timer, DataPack data)
 	return Plugin_Continue;
 }
 
-
-public bool TraceFilter_IgnoreBlacklisted(int entity, int contentMask, int ignore)
+public bool TraceFilter_Ping(int entity, int contentMask, int ignore)
 {
 	if (!cvAllowPlayers.BoolValue && 0 < entity <= MaxClients)
 	{
@@ -515,7 +761,7 @@ public bool TraceFilter_IgnoreBlacklisted(int entity, int contentMask, int ignor
 		return !StrEqual(classname, "npc_nmrih_");
 	}
 
-	return true;
+	return entity != ignore;
 }
 
 void ForwardVector(const float vPos[3], const float vAng[3], float fDistance, float vReturn[3])
@@ -528,20 +774,18 @@ void ForwardVector(const float vPos[3], const float vAng[3], float fDistance, fl
 	vReturn[2] += vDir[2] * fDistance;
 }
 
-void DrawInstructorToAll(int entity, int issuer, int duration)
-{	
-	int r = g_PingColor[issuer][R];
-	int g = g_PingColor[issuer][G];
-	int b = g_PingColor[issuer][B];
+void DrawInstructorToAll(int entity, float pos[3], int color[3], const char[] issuerName, int duration, bool showDistance = false)
+{
+	duration = max(duration, 1);	// never infinite
 
-	char color[40];
-	FormatEx(color, sizeof(color), "%d,%d,%d", r, g, b);
+	char colorStr[40];
+	FormatEx(colorStr, sizeof(colorStr), "%d,%d,%d", color[R], color[G], color[B]);
 
 	char icon[32];
 	cvIcon.GetString(icon, sizeof(icon));
 
 	char hintKey[32];
-	FormatEx(hintKey, sizeof(hintKey), "player_ping_%d", entity);
+	FormatEx(hintKey, sizeof(hintKey), "👆%d", entity);
 
 	char hintSound[PLATFORM_MAX_PATH];
 	cvSound.GetString(hintSound, sizeof(hintSound));
@@ -554,7 +798,7 @@ void DrawInstructorToAll(int entity, int issuer, int duration)
 		}
 
 		char caption[255];
-		FormatEx(caption, sizeof(caption), "%T", "Player Ping", client, issuer);
+		FormatCaptionForClient(issuerName, pos, showDistance, client, caption, sizeof(caption));
 
 		Event event = CreateEvent("instructor_server_hint_create", true);
 		event.SetString("hint_caption", caption);
@@ -566,14 +810,14 @@ void DrawInstructorToAll(int entity, int issuer, int duration)
 		event.SetInt("hint_timeout", duration);
 		event.SetString("hint_icon_onscreen", icon);
 		event.SetString("hint_icon_offscreen", icon);
-		event.SetString("hint_color", color);
+		event.SetString("hint_color", colorStr);
 		event.SetFloat("hint_icon_offset", cvIconOffset.FloatValue);
 		event.SetFloat("hint_range", cvRange.FloatValue);
 		event.SetInt("hint_flags", 0);
 		event.SetString("hint_binding", "");
 		event.SetBool("hint_allow_nodraw_target", true);
 		event.SetBool("hint_nooffscreen", icon[0] == '\0');
-		event.SetBool("hint_forcecaption", false);
+		event.SetBool("hint_forcecaption", true);
 		event.SetBool("hint_local_player_only", false);
 		event.SetString("hint_start_sound", "common/null.wav");	   // We will play our own which isn't buggy
 		event.SetInt("hint_target_pos", 2);						   // World center
@@ -585,7 +829,7 @@ void DrawInstructorToAll(int entity, int issuer, int duration)
 void TE_SendBeam(const float start[3], const float end[3], int duration, int rgb[3])
 {
 	int rgba[4];
-	rgba = rgb;
+	rgba	= rgb;
 	rgba[A] = 255;
 
 	TE_SetupBeamPoints(start, end, g_LaserIndex, g_HaloIndex,
@@ -610,16 +854,16 @@ void TE_SendBeam(const float start[3], const float end[3], int duration, int rgb
 		}
 	}
 
-	TE_Send(recipients, numRecipients);	
+	TE_Send(recipients, numRecipients);
 }
 
 public void OnMapStart()
 {
-	tokens		 = cvBucketSize.FloatValue;
-	lastUpdate	 = 0.0;
+	g_Tokens[0]		= cvBucketSize.FloatValue;
+	g_LastUpdate[0] = 0.0;
 
-	g_LaserIndex = PrecacheModel("materials/sprites/laserbeam.vmt");
-	g_HaloIndex	 = PrecacheModel("materials/sprites/halo01.vmt");
+	g_LaserIndex	= PrecacheModel("materials/sprites/laserbeam.vmt");
+	g_HaloIndex		= PrecacheModel("materials/sprites/halo01.vmt");
 
 	PrecacheSound("common/null.wav");
 
@@ -633,6 +877,8 @@ public void OnMapStart()
 
 void DrawCircleOnSurface(float center[3], float radius, int segments, float normal[3], int duration, int color[3])
 {
+	duration = min(duration, 25);	 // TODO: Beams can't last longer than 25 seconds, use a timer?
+
 	float prevPoint[3], currPoint[3];
 	float tangent1[3], tangent2[3];
 
@@ -690,15 +936,20 @@ bool CanUsePing(int client)
 		return true;
 	}
 
-	float currentTime  = GetGameTime();
-	float time_elapsed = currentTime - lastUpdate;
-	float tokensToAdd  = time_elapsed * cvTokensPerSecond.FloatValue;
-	tokens			   = min(tokens + tokensToAdd, cvBucketSize.FloatValue);
-	lastUpdate		   = currentTime;
-
-	if (tokens >= 1.0)
+	if (cvGlobalCooldown.BoolValue)
 	{
-		tokens -= 1.0;
+		client = 0;
+	}
+
+	float currentTime	 = GetGameTime();
+	float time_elapsed	 = currentTime - g_LastUpdate[client];
+	float tokensToAdd	 = time_elapsed * cvTokensPerSecond.FloatValue;
+	g_Tokens[client]	 = min(g_Tokens[client] + tokensToAdd, cvBucketSize.FloatValue);
+	g_LastUpdate[client] = currentTime;
+
+	if (g_Tokens[client] >= 1.0)
+	{
+		g_Tokens[client] -= 1.0;
 		return true;
 	}
 
@@ -710,13 +961,20 @@ any min(any x, any y)
 	return (x < y) ? x : y;
 }
 
+any max(any x, any y)
+{
+	return (x > y) ? x : y;
+}
+
 bool HasPingsEnabled(int client)
 {
-	return !AreClientCookiesCached(client) || optOutCookie.GetInt(client) == 0;
+	return !g_ClientPrefs || optOutCookie.GetInt(client) == 0;
 }
 
 public void OnClientConnected(int client)
 {
+	g_Tokens[client]	 = cvBucketSize.FloatValue;
+	g_LastUpdate[client] = 0.0;
 	ComputePingColor(client);
 }
 
@@ -739,6 +997,19 @@ void RandomReadableColor(int rgb[3])
 	float h = GetRandomFloat(0.0, 360.0);
 	float s = 1.0;
 	float l = 0.5;
+
+	// Avoid less readable blue-violet range
+	if (h >= 212.0 && h <= 283.0)
+	{
+		if (h < 246.0)
+		{
+			h -= 71.0;
+		}
+		else {
+			h += 71.0;
+		}
+	}
+
 	HSLToRGB(h, s, l, rgb[R], rgb[G], rgb[B]);
 }
 
@@ -762,7 +1033,7 @@ float HueToRGB(float v1, float v2, float vH)
 	return v1;
 }
 
-void HSLToRGB(float h, float s, float l, int& r, int& g, int& b)
+void HSLToRGB(float h, float s, float l, int &r, int &g, int &b)
 {
 	if (s == 0)
 	{
@@ -779,5 +1050,44 @@ void HSLToRGB(float h, float s, float l, int& r, int& g, int& b)
 		r		  = RoundToFloor(255 * HueToRGB(v1, v2, hue + (1.0 / 3)));
 		g		  = RoundToFloor(255 * HueToRGB(v1, v2, hue));
 		b		  = RoundToFloor(255 * HueToRGB(v1, v2, hue - (1.0 / 3)));
+	}
+}
+
+Unit GetClientUnits(int client)
+{
+	if (!g_ClientPrefs)
+	{
+		return view_as<Unit>(cvDistanceUnits.IntValue);
+	}
+
+	Unit cookieVal = view_as<Unit>(unitsCookie.GetInt(client) - 1);
+	if (cookieVal <= Unit_Default || cookieVal >= Unit_MAX)
+	{
+		cookieVal = view_as<Unit>(cvDistanceUnits.IntValue);
+	}
+	return cookieVal;
+}
+
+void SetClientUnits(int client, Unit units)
+{
+	unitsCookie.SetInt(client, view_as<int>(units) + 1);
+}
+
+float GetUnitMultiplier(Unit units)
+{
+	switch (units)
+	{
+		case Unit_Meters:
+		{
+			return 0.01905;
+		}
+		case Unit_Feet:
+		{
+			return 0.08333232;
+		}
+		default:
+		{
+			return 1.0;
+		}
 	}
 }
