@@ -140,7 +140,7 @@ public void OnPluginStart()
 	cvCircleRadius		   = CreateConVar("sm_ping_circle_radius", "9.0", "Radius of the ping circle");
 	cvCircleSegments	   = CreateConVar("sm_ping_circle_segments", "10", "How many straight lines make up the ping circle");
 	cvAllowPlayers		   = CreateConVar("sm_ping_players", "0", "Whether pings can target other players");
-	cvAllowNPCs			   = CreateConVar("sm_ping_npcs", "0", "Whether pings can target zombies");
+	cvAllowNPCs			   = CreateConVar("sm_ping_npcs", "1", "Whether pings can target zombies");
 	cvAllowDead			   = CreateConVar("sm_ping_dead_can_use", "1", "Whether dead players can ping");
 	cvTextLocation		   = CreateConVar("sm_ping_text_location", "0", "Where to place the ping text. 0 = On screen, 1 = In the world");
 

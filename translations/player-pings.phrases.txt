@@ -1,18 +1,36 @@
 "Phrases"
 {
-    "Hammer Units"
+    "Hammer Units, Long"
     {
-        "en"    "h/u"
-        "es"    "u/h"
+        "en"    "Hammer Units"
+        "es"    "Unidades Hammer"
     }
 
-    "Feet"
+    "Feet, Long"
+    {
+        "en"    "Feet"
+        "es"    "Pies"
+    }
+
+    "Meters, Long"
+    {
+        "en"    "Meters"
+        "es"    "Metros"
+    }
+
+    "Hammer Units, Short"
+    {
+        "en"    "hu"
+        "es"    "uh"
+    }
+
+    "Feet, Short"
     {
         "en"    "ft"
         "es"    "pies"
     }
 
-    "Meters"
+    "Meters, Short"
     {
         "en"    "m"
         "es"    "m"
@@ -21,15 +39,15 @@
     "Caption With Distance"
     {
         "#format" "{1:s},{2:.f},{3:T}"
-        "en"    "{1} points ({2}{3})"
-        "es"    "{1} señala ({2}{3})"
+        "en"    "{1} ({2} {3})"
+        "es"    "{1} ({2} {3})"
     }
 
     "Caption"
     {
         "#format"    "{1:s}"
-        "en"         "{1} points"
-        "es"         "{1} señala"
+        "en"         "{1}"
+        "es"         "{1}"
     }
 
     "Must Be Alive"
@@ -46,8 +64,8 @@
 
     "On Cooldown"
     {
-        "en"    "You are doing this too often"
-        "es"    "Estás haciendo esto con demasiada frecuencia"
+        "en"    "Pinging is currently on cooldown"
+        "es"    "Señalar está actualmente en enfriamiento"
     }
 
     "Ping Settings Title"
@@ -60,6 +78,12 @@
     {
         "en"    "Player Pings"
         "es"    "Señales de jugadores"
+    }
+
+    "Setting: Units"
+    {
+        "en"    "Distance Units"
+        "es"    "Unidad de distancia"
     }
 
     "Cookie Disabled"
