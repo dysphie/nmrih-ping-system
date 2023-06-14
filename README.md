@@ -21,9 +21,9 @@ You can configure the plugin by editing the following console variables in `cfg/
 
 | Variable | Description | Default value |
 | --- | --- | --- |
-| sm_ping_enabled | Whether player pings are enabled | 1 |
-| sm_ping_cooldown_tokens_per_second | Tokens added to the bucket per second | 0.05 |
-| sm_ping_cooldown_bucket_size | Number of command tokens that fit in the cooldown bucket | 3 |
+| sm_ping_enabled | Whether player pings are enabled | 1 | 
+| sm_ping_cooldown_bucket_size | How many pings you can use before you have to wait for more | 3 |
+| sm_ping_cooldown_tokens_per_second | How fast you get more pings after you use them | 0.05 |
 | sm_ping_cooldown_shared | Whether the ping cooldown applies to all players or each player separately | 1 |
 | sm_ping_text_height_offset | Vertically offsets the ping caption from its target position by a specified amount, in game units | 30.0 |
 | sm_ping_color_r | The red color component for player pings | 10 |
