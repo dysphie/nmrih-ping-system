@@ -34,7 +34,7 @@ You can configure the plugin by editing the following console variables in `cfg/
 | sm_ping_distance_default_units | Default distance units for players without preference. 0 = Meters, 1 = Feet, 2 = Hammer units | 0 |
 | sm_ping_color_randomize | If true, randomize the ping color for each player instead of using RGB variables | 1 |
 | sm_ping_lifetime | The lifetime of player pings in seconds | 8 |
-| sm_ping_range | The maximum reach of the player ping trace in game units | 32000 |
+| sm_ping_range | The maximum reach of the player ping trace in game units | 3000 |
 | sm_ping_icon | The icon used for player pings. Empty to disable | icon_interact |
 | sm_ping_sound | The sound used for player pings | ui/hint.wav |
 | sm_ping_circle_radius | Radius of the ping circle | 9.0 |
@@ -43,6 +43,7 @@ You can configure the plugin by editing the following console variables in `cfg/
 | sm_ping_npcs | Whether pings can target zombies | 0 |
 | sm_ping_dead_can_use | Whether dead players can ping | 1 |
 | sm_ping_text_location | Where to place the ping text. 0 = On screen, 1 = In the world | 0 |
+| sm_ping_limit | The maximum number of pings that can be active at a time | 4 |
 
 ## Usage
 
