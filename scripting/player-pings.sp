@@ -14,13 +14,15 @@
 #define MATH_PI			   3.141592653
 #define ADMFLAG_PING	   ADMFLAG_GENERIC
 
+#define MAX_PINGS		   25
+
 #define R				   0
 #define G				   1
 #define B				   2
 #define A				   3
 
 #define PLUGIN_DESCRIPTION "Allows players to highlight entities and place markers in the world"
-#define PLUGIN_VERSION	   "1.0.3"
+#define PLUGIN_VERSION	   "1.0.4"
 
 public Plugin myinfo =
 {
@@ -40,7 +42,7 @@ enum Unit
 	Unit_MAX
 }
 
-bool g_ClientPrefs;
+bool   g_ClientPrefs;
 
 ConVar cvEnabled;
 ConVar cvLifetime;
@@ -53,24 +55,18 @@ ConVar cvIconOffset;
 ConVar cvBucketSize;
 ConVar cvTokensPerSecond;
 ConVar cvSound;
-
 ConVar cvShowDistance;
 ConVar cvShowDistanceInterval;
 ConVar cvDistanceUnits;
-
 ConVar cvAllowNPCs;
 ConVar cvAllowPlayers;
-
 ConVar cvRandomizeColor;
-
 ConVar cvCircleSegments;
 ConVar cvCircleRadius;
-
 ConVar cvAllowDead;
-
 ConVar cvTextLocation;
-
 ConVar cvGlobalCooldown;
+ConVar cvLimit;
 
 int	   g_LaserIndex;
 int	   g_HaloIndex;
@@ -81,6 +77,7 @@ Cookie unitsCookie;
 float  g_Tokens[NMR_MAXPLAYERS + 1];
 float  g_LastUpdate[NMR_MAXPLAYERS + 1];
 int	   g_PingColor[NMR_MAXPLAYERS + 1][3];
+float  g_PingExpireTime[MAX_PINGS];
 
 public void OnAllPluginsLoaded()
 {
@@ -99,9 +96,16 @@ public void OnLibraryAdded(const char[] name)
 {
 	if (StrEqual(name, "clientprefs"))
 	{
-		g_ClientPrefs = true;
-		RegisterCookies();
+		OnClientPrefsLoaded();
 	}
+}
+
+void OnClientPrefsLoaded()
+{
+	g_ClientPrefs = true;
+	optOutCookie = new Cookie("disable_player_pings", "Toggles seeing player pings", CookieAccess_Private);
+	unitsCookie	 = new Cookie("player_ping_units", "Distance units to use for player pings", CookieAccess_Private);
+	SetCookieMenuItem(CustomCookieMenu, 0, "Player Pings");
 }
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
@@ -131,18 +135,18 @@ public void OnPluginStart()
 	cvShowDistanceInterval = CreateConVar("sm_ping_distance_update_interval", "0.3", "How often distance is updated in the ping caption");
 	cvDistanceUnits		   = CreateConVar("sm_ping_distance_default_units", "0", "Default distance units for players without preference. 0 = Meters, 1 = Feet, 2 = Hammer units", _,
 										  true, 0.0, true, (float)(view_as<int>(Unit_MAX) - 1));
-
 	cvRandomizeColor	   = CreateConVar("sm_ping_color_randomize", "1", "If true, randomize the ping color for each player instead of using RGB variables");
 	cvLifetime			   = CreateConVar("sm_ping_lifetime", "8", "The lifetime of player pings in seconds", _, true, 1.0);
-	cvRange				   = CreateConVar("sm_ping_range", "32000", "The maximum reach of the player ping trace in game units");
+	cvRange				   = CreateConVar("sm_ping_range", "3000", "The maximum reach of the player ping trace in game units");
 	cvIcon				   = CreateConVar("sm_ping_icon", "icon_interact", "The icon used for player pings. Empty to disable");
 	cvSound				   = CreateConVar("sm_ping_sound", "ui/hint.wav", "The sound used for player pings");
 	cvCircleRadius		   = CreateConVar("sm_ping_circle_radius", "9.0", "Radius of the ping circle");
 	cvCircleSegments	   = CreateConVar("sm_ping_circle_segments", "10", "How many straight lines make up the ping circle");
 	cvAllowPlayers		   = CreateConVar("sm_ping_players", "0", "Whether pings can target other players");
-	cvAllowNPCs			   = CreateConVar("sm_ping_npcs", "1", "Whether pings can target zombies");
+	cvAllowNPCs			   = CreateConVar("sm_ping_npcs", "0", "Whether pings can target zombies");
 	cvAllowDead			   = CreateConVar("sm_ping_dead_can_use", "1", "Whether dead players can ping");
 	cvTextLocation		   = CreateConVar("sm_ping_text_location", "0", "Where to place the ping text. 0 = On screen, 1 = In the world");
+	cvLimit				   = CreateConVar("sm_ping_limit", "4", "The maximum number of pings that can be active at once", _, true, 1.0, true, (float)(MAX_PINGS));
 
 	CreateConVar("player_pings_version", PLUGIN_VERSION, PLUGIN_DESCRIPTION,
 				 FCVAR_SPONLY | FCVAR_NOTIFY | FCVAR_DONTRECORD);
@@ -154,17 +158,10 @@ public void OnPluginStart()
 
 	if (LibraryExists("clientprefs"))
 	{
-		RegisterCookies();
+		OnClientPrefsLoaded();
 	}
 
 	SupportLateload();
-}
-
-void RegisterCookies()
-{
-	optOutCookie = new Cookie("disable_player_pings", "Toggles seeing player pings", CookieAccess_Private);
-	unitsCookie	 = new Cookie("player_ping_units", "Distance units to use for player pings", CookieAccess_Private);
-	SetCookieMenuItem(CustomCookieMenu, 0, "Player Pings");
 }
 
 void SupportLateload()
@@ -263,7 +260,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if ((buttons & IN_VOICECMD) && (buttons & IN_USE) && cvEnabled.BoolValue)
 	{
 		int oldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
-		if (!(oldButtons & IN_USE) && HasPingsEnabled(client))
+		if (!(oldButtons & IN_USE) && CheckCanUsePing(client))
 		{
 			DoPing(client, cvLifetime.IntValue);
 		}
@@ -307,18 +304,16 @@ Action Cmd_Ping(int client, int args)
 		}
 	}
 
-	DoPing(client, duration);
+	if (CheckCanUsePing(client))
+	{
+		DoPing(client, duration);
+	}
+
 	return Plugin_Handled;
 }
 
 void DoPing(int client, int duration)
 {
-	if (!CanUsePing(client))
-	{
-		CPrintToChat(client, "%t", "On Cooldown");
-		return;
-	}
-
 	float eyeAng[3], eyePos[3];
 	GetClientEyeAngles(client, eyeAng);
 	GetClientEyePosition(client, eyePos);
@@ -402,7 +397,7 @@ void PingWorld(float pos[3], float normal[3], int issuer, int duration)
 
 		// Give it time to network
 		DataPack data;
-		CreateDataTimer(0.1, Frame_BeginDrawInstructorAll, data);
+		CreateDataTimer(0.1, Frame_BeginDrawInstructorAll, data, TIMER_FLAG_NO_MAPCHANGE);
 		data.WriteCell(EntIndexToEntRef(entity));
 		data.WriteCell(GetClientSerial(issuer));
 		data.WriteCell(duration);
@@ -419,6 +414,7 @@ void PingWorld(float pos[3], float normal[3], int issuer, int duration)
 	DrawCircleOnSurface(pos, cvCircleRadius.FloatValue, cvCircleSegments.IntValue, normal, duration, g_PingColor[issuer]);
 
 	EmitPingSoundToAll();
+	SaveActivePing(duration);
 }
 
 void EmitPingSoundToAll()
@@ -455,7 +451,7 @@ void RemoveWorldTextAll(int pingID)
 
 void BeginDrawWorldTextAll(float pos[3], int issuer, int duration)
 {
-	static int pingID		= 5000;	   // Don't nuke
+	static int pingID		= 5000;	   // Start high so we don't override mapper placed texts
 
 	bool	   showDistance = cvShowDistance.BoolValue;
 
@@ -606,6 +602,7 @@ void PingEntity(int entity, int issuer, int duration)
 	}
 
 	EmitPingSoundToAll();
+	SaveActivePing(duration);
 }
 
 Action Frame_BeginDrawInstructorAll(Handle timer, DataPack data)
@@ -726,7 +723,7 @@ void HighlightEntity(int entity, int duration, int color[3])
 	AcceptEntityInput(entity, "EnableGlow", entity, entity);
 
 	DataPack data;
-	CreateDataTimer((float)(duration), Timer_UnhighlightEntity, data);
+	CreateDataTimer((float)(duration), Timer_UnhighlightEntity, data, TIMER_FLAG_NO_MAPCHANGE);
 	data.WriteCell(EntIndexToEntRef(entity));
 	data.WriteCell(oldGlowColor);
 	data.WriteFloat(oldGlowDist);
@@ -859,6 +856,11 @@ void TE_SendBeam(const float start[3], const float end[3], int duration, int rgb
 
 public void OnMapStart()
 {
+	for (int i = 0; i < sizeof(g_PingExpireTime); i++)
+	{
+		g_PingExpireTime[i] = 0.0;
+	}
+
 	g_Tokens[0]		= cvBucketSize.FloatValue;
 	g_LastUpdate[0] = 0.0;
 
@@ -929,30 +931,41 @@ void ComputeTangents(const float normal[3], float tangent1[3], float tangent2[3]
 	GetVectorCrossProduct(normal, tangent1, tangent2);
 }
 
-bool CanUsePing(int client)
+bool CheckCanUsePing(int client)
 {
 	if (CheckCommandAccess(client, "ping_cooldown_immunity", ADMFLAG_PING))
 	{
 		return true;
 	}
 
-	if (cvGlobalCooldown.BoolValue)
+	if (!HasPingsEnabled(client))
 	{
-		client = 0;
+		return false;
 	}
 
-	float currentTime	 = GetGameTime();
-	float time_elapsed	 = currentTime - g_LastUpdate[client];
-	float tokensToAdd	 = time_elapsed * cvTokensPerSecond.FloatValue;
-	g_Tokens[client]	 = min(g_Tokens[client] + tokensToAdd, cvBucketSize.FloatValue);
-	g_LastUpdate[client] = currentTime;
-
-	if (g_Tokens[client] >= 1.0)
+	if (GetActivePings() >= cvLimit.IntValue)
 	{
-		g_Tokens[client] -= 1.0;
+		CPrintToChat(client, "%t", "Too Many Pings");
+		return false;
+	}
+
+	int	  cooldownIndex			= cvGlobalCooldown.BoolValue ? 0 : client;
+
+	float currentTime			= GetGameTime();
+	float time_elapsed			= currentTime - g_LastUpdate[cooldownIndex];
+	float tokensToAdd			= time_elapsed * cvTokensPerSecond.FloatValue;
+	g_Tokens[cooldownIndex]		= min(g_Tokens[cooldownIndex] + tokensToAdd, cvBucketSize.FloatValue);
+	g_LastUpdate[cooldownIndex] = currentTime;
+
+	if (g_Tokens[cooldownIndex] >= 1.0)
+	{
+		g_Tokens[cooldownIndex] -= 1.0;
 		return true;
 	}
 
+	// We are on cooldown, calculate remaining seconds
+	float secondsLeft = (1.0 - g_Tokens[cooldownIndex]) / cvTokensPerSecond.FloatValue;
+	CPrintToChat(client, "%t", "On Cooldown", RoundToCeil(secondsLeft));
 	return false;
 }
 
@@ -973,7 +986,7 @@ bool HasPingsEnabled(int client)
 
 public void OnClientConnected(int client)
 {
-	g_Tokens[client]	 = cvBucketSize.FloatValue;
+	g_Tokens[client] = cvBucketSize.FloatValue;
 	g_LastUpdate[client] = 0.0;
 	ComputePingColor(client);
 }
@@ -1090,4 +1103,52 @@ float GetUnitMultiplier(Unit units)
 			return 1.0;
 		}
 	}
+}
+
+bool SaveActivePing(int duration = -1)
+{
+	int maxPings = min(cvLimit.IntValue, sizeof(g_PingExpireTime));
+	if (maxPings <= 0)
+	{
+		return false;
+	}
+
+	float curTime = GetGameTime();
+
+	for (int i = 0; i < maxPings; i++)
+	{
+		float expireTime = g_PingExpireTime[i];
+
+		// Find an expired ping cell to place our new ping
+		if (curTime >= expireTime)
+		{
+			g_PingExpireTime[i] = curTime + (float)(duration);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+int GetActivePings()
+{
+	int maxPings = min(cvLimit.IntValue, sizeof(g_PingExpireTime));
+	if (maxPings <= 0)
+	{
+		return false;
+	}
+
+	int	  count	  = 0;
+
+	float curTime = GetGameTime();
+
+	for (int i = 0; i < maxPings; i++)
+	{
+		if (g_PingExpireTime[i] > curTime)
+		{
+			count++;
+		}
+	}
+
+	return count;
 }

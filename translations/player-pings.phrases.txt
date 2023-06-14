@@ -62,22 +62,29 @@
         "es"    "Señalar está desactivado"
     }
 
+    "Too Many Pings"
+    {
+        "en"    "Can't ping: Too many active pings"
+        "es"    "No puedes señalar: Demasiadas señales activas"
+    }
+
     "On Cooldown"
     {
-        "en"    "Pinging is currently on cooldown"
-        "es"    "Señalar está actualmente en enfriamiento"
+        "#format"   "{1:d}"
+        "en"    "Can't ping: On cooldown for {1} seconds"
+        "es"    "No puedes señalar: En enfriamiento por {1} segundos"
     }
 
     "Ping Settings Title"
     {
-        "en"    "Player Pings Settings"
-        "es"    "Configuración de Señales de Jugadores"
+        "en"    "Player Pings"
+        "es"    "Señales de Jugadores"
     }
 
     "Setting: Toggle"
     {
         "en"    "Player Pings"
-        "es"    "Señales de jugadores"
+        "es"    "Señales de Jugadores"
     }
 
     "Setting: Units"
