@@ -279,6 +279,7 @@ Action Cmd_Ping(int client, int args)
 	if (!client)
 	{
 		CReplyToCommand(client, "In-game command only.");
+		return Plugin_Handled;
 	}
 
 	if (!cvEnabled.BoolValue)
@@ -358,20 +359,23 @@ void DoPing(int client, int duration)
 
 	int	   hullEnt	 = TR_GetEntityIndex(hullTrace);
 
-	if (!CouldEntityGlow(hullEnt))
+	if( hullEnt >= 0 )
 	{
-		// If we didn't hit anything glowable with the hull, prefer ray trace and ping the world
-		float endPos[3];
-		TR_GetEndPosition(endPos, rayTrace);
+		if (!CouldEntityGlow(hullEnt))
+		{
+			// If we didn't hit anything glowable with the hull, prefer ray trace and ping the world
+			float endPos[3];
+			TR_GetEndPosition(endPos, rayTrace);
 
-		float normal[3];
-		TR_GetPlaneNormal(rayTrace, normal);
+			float normal[3];
+			TR_GetPlaneNormal(rayTrace, normal);
 
-		PingWorld(endPos, normal, client, duration);
-	}
-	else
-	{
-		PingEntity(hullEnt, client, duration);
+			PingWorld(endPos, normal, client, duration);
+		}
+		else
+		{
+			PingEntity(hullEnt, client, duration);
+		}
 	}
 
 	delete hullTrace;
