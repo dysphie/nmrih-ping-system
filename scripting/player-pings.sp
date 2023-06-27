@@ -67,6 +67,7 @@ ConVar cvAllowDead;
 ConVar cvTextLocation;
 ConVar cvGlobalCooldown;
 ConVar cvLimit;
+ConVar cvAdminImmunity;
 
 int	   g_LaserIndex;
 int	   g_HaloIndex;
@@ -127,6 +128,7 @@ public void OnPluginStart()
 	cvTokensPerSecond	   = CreateConVar("sm_ping_cooldown_tokens_per_second", "0.00833", "Tokens added to the bucket per second");
 	cvBucketSize		   = CreateConVar("sm_ping_cooldown_bucket_size", "2", "Number of command tokens that fit in the cooldown bucket");
 	cvGlobalCooldown	   = CreateConVar("sm_ping_cooldown_shared", "0", "Whether the ping cooldown applies to all players or each player separately");
+	cvAdminImmunity		   = CreateConVar("sm_ping_cooldown_admin_immunity", "1", "Whether admins are immune to ping cooldowns");
 	cvIconOffset		   = CreateConVar("sm_ping_text_height_offset", "30.0", "Vertically offsets the ping caption from its target position by a specified amount, in game units");
 	cvColorR			   = CreateConVar("sm_ping_color_r", "10", "The red color component for player pings");
 	cvColorG			   = CreateConVar("sm_ping_color_g", "224", "The green color component for player pings");
@@ -929,7 +931,7 @@ void ComputeTangents(const float normal[3], float tangent1[3], float tangent2[3]
 
 bool CheckCanUsePing(int client)
 {
-	if (CheckCommandAccess(client, "ping_cooldown_immunity", ADMFLAG_PING))
+	if (cvAdminImmunity.BoolValue && CheckCommandAccess(client, "ping_cooldown_immunity", ADMFLAG_PING))
 	{
 		return true;
 	}
