@@ -22,7 +22,7 @@
 #define A				   3
 
 #define PLUGIN_DESCRIPTION "Allows players to highlight entities and place markers in the world"
-#define PLUGIN_VERSION	   "1.0.4"
+#define PLUGIN_VERSION	   "1.0.5"
 
 public Plugin myinfo =
 {
@@ -271,11 +271,6 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
 Action Cmd_Ping(int client, int args)
 {
-	if (!IsDedicatedServer() && GetCmdReplySource() == SM_REPLY_TO_CONSOLE)
-	{
-		client = FindEntityByClassname(-1, "player");
-	}
-
 	if (!client)
 	{
 		CReplyToCommand(client, "In-game command only.");
@@ -359,23 +354,20 @@ void DoPing(int client, int duration)
 
 	int	   hullEnt	 = TR_GetEntityIndex(hullTrace);
 
-	if( hullEnt >= 0 )
+	if (!IsValidEntity(hullEnt) || !CouldEntityGlow(hullEnt))
 	{
-		if (!CouldEntityGlow(hullEnt))
-		{
-			// If we didn't hit anything glowable with the hull, prefer ray trace and ping the world
-			float endPos[3];
-			TR_GetEndPosition(endPos, rayTrace);
+		// If we didn't hit anything glowable with the hull, prefer ray trace and ping the world
+		float endPos[3];
+		TR_GetEndPosition(endPos, rayTrace);
 
-			float normal[3];
-			TR_GetPlaneNormal(rayTrace, normal);
+		float normal[3];
+		TR_GetPlaneNormal(rayTrace, normal);
 
-			PingWorld(endPos, normal, client, duration);
-		}
-		else
-		{
-			PingEntity(hullEnt, client, duration);
-		}
+		PingWorld(endPos, normal, client, duration);
+	}
+	else
+	{
+		PingEntity(hullEnt, client, duration);
 	}
 
 	delete hullTrace;
