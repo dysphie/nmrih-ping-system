@@ -124,14 +124,14 @@ public void OnPluginStart()
 	LoadTranslations("player-pings.phrases");
 
 	cvEnabled			   = CreateConVar("sm_ping_enabled", "1", "Whether player pings are enabled");
-	cvTokensPerSecond	   = CreateConVar("sm_ping_cooldown_tokens_per_second", "0.05", "Tokens added to the bucket per second");
-	cvBucketSize		   = CreateConVar("sm_ping_cooldown_bucket_size", "3", "Number of command tokens that fit in the cooldown bucket");
-	cvGlobalCooldown	   = CreateConVar("sm_ping_cooldown_shared", "1", "Whether the ping cooldown applies to all players or each player separately");
+	cvTokensPerSecond	   = CreateConVar("sm_ping_cooldown_tokens_per_second", "0.00833", "Tokens added to the bucket per second");
+	cvBucketSize		   = CreateConVar("sm_ping_cooldown_bucket_size", "2", "Number of command tokens that fit in the cooldown bucket");
+	cvGlobalCooldown	   = CreateConVar("sm_ping_cooldown_shared", "0", "Whether the ping cooldown applies to all players or each player separately");
 	cvIconOffset		   = CreateConVar("sm_ping_text_height_offset", "30.0", "Vertically offsets the ping caption from its target position by a specified amount, in game units");
 	cvColorR			   = CreateConVar("sm_ping_color_r", "10", "The red color component for player pings");
 	cvColorG			   = CreateConVar("sm_ping_color_g", "224", "The green color component for player pings");
 	cvColorB			   = CreateConVar("sm_ping_color_b", "247", "The blue color component for player pings");
-	cvShowDistance		   = CreateConVar("sm_ping_distance_show", "0", "If true, shows distance to the ping location in the caption");
+	cvShowDistance		   = CreateConVar("sm_ping_distance_show", "1", "If true, shows distance to the ping location in the caption");
 	cvShowDistanceInterval = CreateConVar("sm_ping_distance_update_interval", "0.3", "How often distance is updated in the ping caption");
 	cvDistanceUnits		   = CreateConVar("sm_ping_distance_default_units", "0", "Default distance units for players without preference. 0 = Meters, 1 = Feet, 2 = Hammer units", _,
 										  true, 0.0, true, (float)(view_as<int>(Unit_MAX) - 1));
@@ -146,7 +146,7 @@ public void OnPluginStart()
 	cvAllowNPCs			   = CreateConVar("sm_ping_npcs", "0", "Whether pings can target zombies");
 	cvAllowDead			   = CreateConVar("sm_ping_dead_can_use", "1", "Whether dead players can ping");
 	cvTextLocation		   = CreateConVar("sm_ping_text_location", "0", "Where to place the ping text. 0 = On screen, 1 = In the world");
-	cvLimit				   = CreateConVar("sm_ping_limit", "4", "The maximum number of pings that can be active at once", _, true, 1.0, true, (float)(MAX_PINGS));
+	cvLimit				   = CreateConVar("sm_ping_limit", "3", "The maximum number of pings that can be active at once", _, true, 1.0, true, (float)(MAX_PINGS));
 
 	CreateConVar("player_pings_version", PLUGIN_VERSION, PLUGIN_DESCRIPTION,
 				 FCVAR_SPONLY | FCVAR_NOTIFY | FCVAR_DONTRECORD);
