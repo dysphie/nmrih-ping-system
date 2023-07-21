@@ -6,7 +6,7 @@ The ping can be used to communicate locations, objectives, enemies, items, or an
 ![image](https://github.com/dysphie/nmrih-ping-system/assets/11559683/d44a09e7-30cf-40f7-902a-aef0c336a607)
 
 ## Requirements
-- [SourceMod 1.11](https://www.sourcemod.net/downloads.php?branch=stable) or higher
+- [SourceMod 1.12](https://www.sourcemod.net/downloads.php?branch=stable) (1.11 will work but with degraded performance)
 - (Optional) Client Preferences extension and plugin to allow players to hide pings (bundled and enabled with SourceMod by default)
 
 ## Installation
