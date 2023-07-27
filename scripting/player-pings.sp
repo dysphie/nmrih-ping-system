@@ -660,6 +660,12 @@ Action Timer_UpdateInstructorAll(Handle timer, DataPack data)
 
 	float pos[3];
 	data.ReadFloatArray(pos, sizeof(pos));
+	// If in the player's inventory, the location of the entity is fixed to where it was when it was picked up.
+	// Todo: What should be obtained is the player's position
+	if( IsValidEntity(entity) )
+	{
+		GetEntityAbsOrigin(entity, pos);
+	}
 
 	int color[3];
 	data.ReadCellArray(color, sizeof(color));
