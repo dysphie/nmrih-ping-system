@@ -456,16 +456,16 @@ void RemoveWorldTextAll(int pingID)
 	EndMessage();
 }
 
-void BeginDrawWorldTextAll(float pos[3], int issuer, int duration)
+void BeginDrawWorldTextAll(float pos[3], int issuer, int duration, int moveParent = -1)
 {
-	static int pingID		= 5000;	   // Start high so we don't override mapper placed texts
+	static int pingID		= 5000;	   // Start high so we don't override map texts
 
 	bool	   showDistance = cvShowDistance.BoolValue;
 
 	char	   issuerName[MAX_NAME_LENGTH];
 	GetClientName(issuer, issuerName, sizeof(issuerName));
 
-	DrawWorldTextAll(pingID, pos, g_PingColor[issuer], issuerName, showDistance);
+	DrawWorldTextAll(pingID, pos, g_PingColor[issuer], issuerName, showDistance, moveParent);
 
 	if (!showDistance)
 	{
@@ -476,9 +476,10 @@ void BeginDrawWorldTextAll(float pos[3], int issuer, int duration)
 	{
 		// Otherwise we constantly update the thing
 		DataPack data;
-		CreateDataTimer(cvShowDistanceInterval.FloatValue, Timer_UpdateWorldTextAll, data, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-		data.WriteFloat(GetGameTime() + (float)(duration));
+		CreateDataTimer(cvShowDistanceInterval.FloatValue, Timer_UpdateWorldTextAll, data, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);	
 		data.WriteCell(pingID);
+		data.WriteCell(moveParent != -1 ? EntIndexToEntRef(moveParent) : -1);
+		data.WriteFloat(GetGameTime() + (float)(duration));
 		data.WriteFloatArray(pos, sizeof(pos));
 		data.WriteCellArray(g_PingColor[issuer], sizeof(g_PingColor[]));
 		data.WriteString(issuerName);
@@ -487,7 +488,7 @@ void BeginDrawWorldTextAll(float pos[3], int issuer, int duration)
 	pingID++;
 }
 
-void DrawWorldTextAll(int pingID, float pos[3], int color[3], const char[] issuerName, bool showDistance = false)
+void DrawWorldTextAll(int pingID, float pos[3], int color[3], const char[] issuerName, bool showDistance = false, int moveParent = -1)
 {
 	float adjustedPos[3];
 	adjustedPos[0] = pos[0];
@@ -510,14 +511,15 @@ void DrawWorldTextAll(int pingID, float pos[3], int color[3], const char[] issue
 		BfWrite bf	= UserMessageToBfWrite(msg);
 		bf.WriteString(caption);
 		bf.WriteShort(pingID);
-		bf.WriteShort(POINT_MESSAGE_FONT_PROPORTIONAL|POINT_MESSAGE_FONT_DROP_SHADOW);	 // flags
+		bf.WriteShort(/*POINT_MESSAGE_FONT_PROPORTIONAL| */POINT_MESSAGE_FONT_DROP_SHADOW);	 // flags
 		bf.WriteVecCoord(adjustedPos);
 		bf.WriteFloat(cvRange.FloatValue);	  // radius
 		bf.WriteString("PointMessageDefault");
 		bf.WriteByte(color[R]);	   // r
 		bf.WriteByte(color[G]);	   // g
 		bf.WriteByte(color[B]);	   // b
-
+		bf.WriteShort(moveParent);
+		bf.WriteFloat(0.5); // Height offset
 		EndMessage();
 	}
 }
@@ -571,8 +573,21 @@ Action Timer_UpdateWorldTextAll(Handle timer, DataPack data)
 {
 	data.Reset();
 
+	int pingID  = data.ReadCell();
+
+	int moveParent = -1;
+	int moveParentRef = data.ReadCell();
+	if (moveParentRef != INVALID_ENT_REFERENCE) 
+	{ 
+		moveParent = EntRefToEntIndex(moveParentRef);
+		if (moveParent == -1) 
+		{
+			RemoveWorldTextAll(pingID);
+			return Plugin_Stop;
+		}
+	}
+
 	float endTime = data.ReadFloat();
-	int	  pingID  = data.ReadCell();
 
 	if (GetGameTime() >= endTime)
 	{
@@ -589,7 +604,8 @@ Action Timer_UpdateWorldTextAll(Handle timer, DataPack data)
 	char issuerName[MAX_NAME_LENGTH];
 	data.ReadString(issuerName, sizeof(issuerName));
 
-	DrawWorldTextAll(pingID, pos, color, issuerName, true);
+	
+	DrawWorldTextAll(pingID, pos, color, issuerName, true, moveParent);
 	return Plugin_Continue;
 }
 
@@ -605,7 +621,7 @@ void PingEntity(int entity, int issuer, int duration)
 	{
 		float pos[3];
 		GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pos);
-		BeginDrawWorldTextAll(pos, issuer, duration);
+		BeginDrawWorldTextAll(pos, issuer, duration, entity);
 	}
 
 	EmitPingSoundToAll();
