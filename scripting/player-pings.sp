@@ -22,7 +22,7 @@
 #define A				   3
 
 #define PLUGIN_DESCRIPTION "Allows players to highlight entities and place markers in the world"
-#define PLUGIN_VERSION	   "1.0.5"
+#define PLUGIN_VERSION	   "1.0.6"
 
 public Plugin myinfo =
 {
@@ -31,6 +31,15 @@ public Plugin myinfo =
 	description = PLUGIN_DESCRIPTION,
 	version		= PLUGIN_VERSION,
 	url			= "https://github.com/dysphie/nmrih-ping-system"
+};
+
+// point_message flags
+enum
+{
+    POINT_MESSAGE_DEVELOPER_ONLY = 1 << 0,
+    POINT_MESSAGE_FONT_PROPORTIONAL = 1 << 1,
+    POINT_MESSAGE_FONT_DROP_SHADOW = 1 << 2,
+    POINT_MESSAGE_OFFSET_POSITION = 1 << 3,
 };
 
 enum Unit
@@ -225,8 +234,8 @@ int MenuHandler_CookiesMenu(Menu menu, MenuAction action, int param1, int param2
 
 		if (StrEqual(info, "toggle"))
 		{
-			bool optedOut = optOutCookie.GetInt(client) != 0;
-			optOutCookie.SetInt(client, !optedOut);
+			bool optedOut = _CookieGetInt(optOutCookie, client) != 0;
+			_CookieSetInt(optOutCookie, client, !optedOut);
 		}
 
 		else if (StrEqual(info, "units"))
@@ -447,16 +456,16 @@ void RemoveWorldTextAll(int pingID)
 	EndMessage();
 }
 
-void BeginDrawWorldTextAll(float pos[3], int issuer, int duration)
+void BeginDrawWorldTextAll(float pos[3], int issuer, int duration, int moveParent = -1)
 {
-	static int pingID		= 5000;	   // Start high so we don't override mapper placed texts
+	static int pingID		= 5000;	   // Start high so we don't override map texts
 
 	bool	   showDistance = cvShowDistance.BoolValue;
 
 	char	   issuerName[MAX_NAME_LENGTH];
 	GetClientName(issuer, issuerName, sizeof(issuerName));
 
-	DrawWorldTextAll(pingID, pos, g_PingColor[issuer], issuerName, showDistance);
+	DrawWorldTextAll(pingID, pos, g_PingColor[issuer], issuerName, showDistance, moveParent);
 
 	if (!showDistance)
 	{
@@ -467,9 +476,10 @@ void BeginDrawWorldTextAll(float pos[3], int issuer, int duration)
 	{
 		// Otherwise we constantly update the thing
 		DataPack data;
-		CreateDataTimer(cvShowDistanceInterval.FloatValue, Timer_UpdateWorldTextAll, data, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-		data.WriteFloat(GetGameTime() + (float)(duration));
+		CreateDataTimer(cvShowDistanceInterval.FloatValue, Timer_UpdateWorldTextAll, data, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);	
 		data.WriteCell(pingID);
+		data.WriteCell(moveParent != -1 ? EntIndexToEntRef(moveParent) : -1);
+		data.WriteFloat(GetGameTime() + (float)(duration));
 		data.WriteFloatArray(pos, sizeof(pos));
 		data.WriteCellArray(g_PingColor[issuer], sizeof(g_PingColor[]));
 		data.WriteString(issuerName);
@@ -478,7 +488,7 @@ void BeginDrawWorldTextAll(float pos[3], int issuer, int duration)
 	pingID++;
 }
 
-void DrawWorldTextAll(int pingID, float pos[3], int color[3], const char[] issuerName, bool showDistance = false)
+void DrawWorldTextAll(int pingID, float pos[3], int color[3], const char[] issuerName, bool showDistance = false, int moveParent = -1)
 {
 	float adjustedPos[3];
 	adjustedPos[0] = pos[0];
@@ -501,14 +511,15 @@ void DrawWorldTextAll(int pingID, float pos[3], int color[3], const char[] issue
 		BfWrite bf	= UserMessageToBfWrite(msg);
 		bf.WriteString(caption);
 		bf.WriteShort(pingID);
-		bf.WriteShort(0);	 // flags
+		bf.WriteShort(/*POINT_MESSAGE_FONT_PROPORTIONAL| */POINT_MESSAGE_FONT_DROP_SHADOW);	 // flags
 		bf.WriteVecCoord(adjustedPos);
 		bf.WriteFloat(cvRange.FloatValue);	  // radius
 		bf.WriteString("PointMessageDefault");
 		bf.WriteByte(color[R]);	   // r
 		bf.WriteByte(color[G]);	   // g
 		bf.WriteByte(color[B]);	   // b
-
+		bf.WriteShort(moveParent);
+		bf.WriteFloat(0.5); // Height offset
 		EndMessage();
 	}
 }
@@ -562,8 +573,21 @@ Action Timer_UpdateWorldTextAll(Handle timer, DataPack data)
 {
 	data.Reset();
 
+	int pingID  = data.ReadCell();
+
+	int moveParent = -1;
+	int moveParentRef = data.ReadCell();
+	if (moveParentRef != INVALID_ENT_REFERENCE) 
+	{ 
+		moveParent = EntRefToEntIndex(moveParentRef);
+		if (moveParent == -1) 
+		{
+			RemoveWorldTextAll(pingID);
+			return Plugin_Stop;
+		}
+	}
+
 	float endTime = data.ReadFloat();
-	int	  pingID  = data.ReadCell();
 
 	if (GetGameTime() >= endTime)
 	{
@@ -580,7 +604,8 @@ Action Timer_UpdateWorldTextAll(Handle timer, DataPack data)
 	char issuerName[MAX_NAME_LENGTH];
 	data.ReadString(issuerName, sizeof(issuerName));
 
-	DrawWorldTextAll(pingID, pos, color, issuerName, true);
+	
+	DrawWorldTextAll(pingID, pos, color, issuerName, true, moveParent);
 	return Plugin_Continue;
 }
 
@@ -596,7 +621,7 @@ void PingEntity(int entity, int issuer, int duration)
 	{
 		float pos[3];
 		GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", pos);
-		BeginDrawWorldTextAll(pos, issuer, duration);
+		BeginDrawWorldTextAll(pos, issuer, duration, entity);
 	}
 
 	EmitPingSoundToAll();
@@ -985,7 +1010,7 @@ any max(any x, any y)
 
 bool HasPingsEnabled(int client)
 {
-	return !g_ClientPrefs || optOutCookie.GetInt(client) == 0;
+	return !g_ClientPrefs || _CookieGetInt(optOutCookie, client) == 0;
 }
 
 public void OnClientConnected(int client)
@@ -1077,7 +1102,7 @@ Unit GetClientUnits(int client)
 		return view_as<Unit>(cvDistanceUnits.IntValue);
 	}
 
-	Unit cookieVal = view_as<Unit>(unitsCookie.GetInt(client) - 1);
+	Unit cookieVal = view_as<Unit>(_CookieGetInt(unitsCookie, client) - 1);
 	if (cookieVal <= Unit_Default || cookieVal >= Unit_MAX)
 	{
 		cookieVal = view_as<Unit>(cvDistanceUnits.IntValue);
@@ -1087,7 +1112,22 @@ Unit GetClientUnits(int client)
 
 void SetClientUnits(int client, Unit units)
 {
-	unitsCookie.SetInt(client, view_as<int>(units) + 1);
+	_CookieSetInt(unitsCookie, client, view_as<int>(units) + 1);
+}
+
+// Backport Cookie.SetInt/GetInt methods from 1.12
+void _CookieSetInt(Cookie cookie, int client, int value)
+{
+	char str[12];
+	IntToString(value, str, sizeof(str));
+	cookie.Set(client, str);
+}
+
+int _CookieGetInt(Cookie cookie, int client)
+{
+	char value[12];
+	cookie.Get(client, value, sizeof(value));
+	return StringToInt(value);
 }
 
 float GetUnitMultiplier(Unit units)
