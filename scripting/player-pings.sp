@@ -22,7 +22,7 @@
 #define A				   3
 
 #define PLUGIN_DESCRIPTION "Allows players to highlight entities and place markers in the world"
-#define PLUGIN_VERSION	   "1.0.6"
+#define PLUGIN_VERSION	   "1.0.7"
 
 public Plugin myinfo =
 {
@@ -40,6 +40,12 @@ enum
     POINT_MESSAGE_FONT_PROPORTIONAL = 1 << 1,
     POINT_MESSAGE_FONT_DROP_SHADOW = 1 << 2,
     POINT_MESSAGE_OFFSET_POSITION = 1 << 3,
+};
+
+enum
+{
+    ShortKeyType_EE = 1 << 0,
+    ShortKeyType_ER = 1 << 1,
 };
 
 enum Unit
@@ -77,6 +83,7 @@ ConVar cvTextLocation;
 ConVar cvGlobalCooldown;
 ConVar cvLimit;
 ConVar cvAdminImmunity;
+ConVar cvCMDPingShortKey;
 
 int	   g_LaserIndex;
 int	   g_HaloIndex;
@@ -158,6 +165,7 @@ public void OnPluginStart()
 	cvAllowDead			   = CreateConVar("sm_ping_dead_can_use", "1", "Whether dead players can ping");
 	cvTextLocation		   = CreateConVar("sm_ping_text_location", "0", "Where to place the ping text. 0 = On screen, 1 = In the world");
 	cvLimit				   = CreateConVar("sm_ping_limit", "3", "The maximum number of pings that can be active at once", _, true, 1.0, true, (float)(MAX_PINGS));
+	cvCMDPingShortKey	   = CreateConVar("sm_ping_cmd_short_key", "1", "The ping command shortcut key. 1=voice menu and the Use key. 2=voice menu and the Reload key");
 
 	CreateConVar("player_pings_version", PLUGIN_VERSION, PLUGIN_DESCRIPTION,
 				 FCVAR_SPONLY | FCVAR_NOTIFY | FCVAR_DONTRECORD);
@@ -268,15 +276,28 @@ void OnPingSoundConVarChanged(ConVar convar, const char[] oldValue, const char[]
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if ((buttons & IN_VOICECMD) && (buttons & IN_USE) && cvEnabled.BoolValue)
+	if (cvCMDPingShortKey.IntValue & ShortKeyType_EE)
 	{
-		int oldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
-		if (!(oldButtons & IN_USE) && CheckCanUsePing(client))
+		if ((buttons & IN_VOICECMD) && (buttons & IN_USE) && cvEnabled.BoolValue)
 		{
-			DoPing(client, cvLifetime.IntValue);
+			int oldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
+			if (!(oldButtons & IN_USE) && CheckCanUsePing(client))
+			{
+				DoPing(client, cvLifetime.IntValue);
+			}
 		}
 	}
-
+	else // if (cvPingShortcutKey.IntValue & ShortKeyType_ER)
+	{
+		if ((buttons & IN_VOICECMD) && (buttons & IN_RELOAD) && cvEnabled.BoolValue)
+		{
+			int oldButtons = GetEntProp(client, Prop_Data, "m_nOldButtons");
+			if (!(oldButtons & IN_RELOAD) && CheckCanUsePing(client))
+			{
+				DoPing(client, cvLifetime.IntValue);
+			}
+		}
+	}
 	return Plugin_Continue;
 }
 
@@ -387,8 +408,8 @@ void DoPing(int client, int duration)
 
 bool CouldEntityGlow(int entity)
 {
-	char classname[32];
-	GetEntityClassname(entity, classname, sizeof(classname));
+	// char classname[32];
+	// GetEntityClassname(entity, classname, sizeof(classname));
 
 	return IsValidEdict(entity) && HasEntProp(entity, Prop_Send, "m_bGlowing") && HasEntProp(entity, Prop_Data, "m_bIsGlowable") && HasEntProp(entity, Prop_Data, "m_clrGlowColor") && HasEntProp(entity, Prop_Data, "m_flGlowDistance");
 }
@@ -476,7 +497,7 @@ void BeginDrawWorldTextAll(float pos[3], int issuer, int duration, int moveParen
 	{
 		// Otherwise we constantly update the thing
 		DataPack data;
-		CreateDataTimer(cvShowDistanceInterval.FloatValue, Timer_UpdateWorldTextAll, data, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);	
+		CreateDataTimer(cvShowDistanceInterval.FloatValue, Timer_UpdateWorldTextAll, data, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 		data.WriteCell(pingID);
 		data.WriteCell(moveParent != -1 ? EntIndexToEntRef(moveParent) : -1);
 		data.WriteFloat(GetGameTime() + (float)(duration));
@@ -577,10 +598,10 @@ Action Timer_UpdateWorldTextAll(Handle timer, DataPack data)
 
 	int moveParent = -1;
 	int moveParentRef = data.ReadCell();
-	if (moveParentRef != INVALID_ENT_REFERENCE) 
-	{ 
+	if (moveParentRef != INVALID_ENT_REFERENCE)
+	{
 		moveParent = EntRefToEntIndex(moveParentRef);
-		if (moveParent == -1) 
+		if (moveParent == -1)
 		{
 			RemoveWorldTextAll(pingID);
 			return Plugin_Stop;
@@ -604,7 +625,7 @@ Action Timer_UpdateWorldTextAll(Handle timer, DataPack data)
 	char issuerName[MAX_NAME_LENGTH];
 	data.ReadString(issuerName, sizeof(issuerName));
 
-	
+
 	DrawWorldTextAll(pingID, pos, color, issuerName, true, moveParent);
 	return Plugin_Continue;
 }
@@ -665,7 +686,6 @@ void BeginDrawInstructorAll(int entity, int issuer, int duration)
 	CreateDataTimer(cvShowDistanceInterval.FloatValue, Timer_UpdateInstructorAll, data, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 	data.WriteFloat(GetGameTime() + (float)(duration));
 	data.WriteCell(EntIndexToEntRef(entity));
-	data.WriteFloatArray(pos, sizeof(pos));
 	data.WriteCellArray(g_PingColor[issuer], sizeof(g_PingColor[]));
 	data.WriteString(issuerName);
 	data.WriteCell(showDistance);
@@ -684,10 +704,12 @@ Action Timer_UpdateInstructorAll(Handle timer, DataPack data)
 	}
 
 	float pos[3];
-	data.ReadFloatArray(pos, sizeof(pos));
-	// If in the player's inventory, the location of the entity is fixed to where it was when it was picked up.
-	// Todo: What should be obtained is the player's position
-	if( IsValidEntity(entity) )
+	int owner = GetEntPropEnt(entity, Prop_Data, "m_hOwnerEntity");
+	if (owner <= MaxClients && owner > 0 && IsClientInGame(owner))
+	{
+		GetEntityAbsOrigin(owner, pos);
+	}
+	else
 	{
 		GetEntityAbsOrigin(entity, pos);
 	}
@@ -736,8 +758,8 @@ void HighlightEntity(int entity, int duration, int color[3])
 		return;
 	}
 
-	char classname[80];
-	GetEntityClassname(entity, classname, sizeof(classname));
+	// char classname[80];
+	// GetEntityClassname(entity, classname, sizeof(classname));
 
 	char rgb[40];
 	FormatEx(rgb, sizeof(rgb), "%d %d %d", color[R], color[G], color[B]);
