@@ -22,7 +22,7 @@
 #define A				   3
 
 #define PLUGIN_DESCRIPTION "Allows players to highlight entities and place markers in the world"
-#define PLUGIN_VERSION	   "1.0.7"
+#define PLUGIN_VERSION	   "1.0.8"
 
 public Plugin myinfo =
 {
@@ -353,12 +353,16 @@ void DoPing(int client, int duration)
 	// Check if we hit an entity with the ray
 	if (IsValidEdict(rayEnt) && CouldEntityGlow(rayEnt))
 	{
-		float endPos[3];
+		float endPos[3], entity_distance;
 		TR_GetEndPosition(endPos, rayTrace);
 
-		PingEntity(rayEnt, client, duration);
-
+		entity_distance = GetVectorDistance(eyePos, endPos);
 		delete rayTrace;
+
+		if (FloatCompare(entity_distance, cvRange.FloatValue) <= 0)
+		{
+			PingEntity(rayEnt, client, duration);
+		}
 		return;
 	}
 
@@ -384,22 +388,25 @@ void DoPing(int client, int duration)
 
 	Handle hullTrace = TR_TraceHullFilterEx(hullStart, hullEnd, hullMins, hullMaxs, MASK_VISIBLE, TraceFilter_Ping, client);
 
-	int	   hullEnt	 = TR_GetEntityIndex(hullTrace);
-
-	if (!IsValidEntity(hullEnt) || !CouldEntityGlow(hullEnt))
+	// If we didn't hit anything, no ping is needed
+	if( TR_DidHit(hullTrace) )
 	{
-		// If we didn't hit anything glowable with the hull, prefer ray trace and ping the world
-		float endPos[3];
-		TR_GetEndPosition(endPos, rayTrace);
+		int hullEnt = TR_GetEntityIndex(hullTrace);
+		if (!IsValidEntity(hullEnt) || !CouldEntityGlow(hullEnt))
+		{
+			// If we didn't hit anything glowable with the hull, prefer ray trace and ping the world
+			float endPos[3];
+			TR_GetEndPosition(endPos, rayTrace);
 
-		float normal[3];
-		TR_GetPlaneNormal(rayTrace, normal);
+			float normal[3];
+			TR_GetPlaneNormal(rayTrace, normal);
 
-		PingWorld(endPos, normal, client, duration);
-	}
-	else
-	{
-		PingEntity(hullEnt, client, duration);
+			PingWorld(endPos, normal, client, duration);
+		}
+		else
+		{
+			PingEntity(hullEnt, client, duration);
+		}
 	}
 
 	delete hullTrace;
