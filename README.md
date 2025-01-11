@@ -1,3 +1,6 @@
+> [!WARNING]
+> This plugin is unmaintained since Torn Banner's acquisition of the game.
+
 # Player Pings
 
 This plugin allows players to point at the world and create a visual and audible ping that can be seen and heard by other players. 
